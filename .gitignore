@@ -1,5 +1,7 @@
-# 머신-로컬 dev 마커(추적 금지 — 배포 메타는 별도 파일)
+node_modules/
 .soksak.json
+*.log
+.DS_Store
 
 # local-only working notes (never committed)
 secret/
