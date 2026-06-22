@@ -5,17 +5,35 @@
     "ko": "브라우저",
     "en": "Browser"
   },
-  "version": "1.2.0",
+  "version": "2.0.0",
   "repo": "https://github.com/soksak-ai/soksak-plugin-browser.git",
   "description": {
-    "ko": "새 탭(+) 메뉴에 브라우저를 추가 — 시작 페이지는 설정의 시작 URL",
-    "en": "Adds Browser to the new-tab (+) menu — opens the start URL from settings"
+    "ko": "콘텐츠 뷰로 브라우저를 렌더 — 코어 네이티브 child webview(WKWebView) 를 직접 구동. URL 바·즐겨찾기·북마크·devtools 토글 내장.",
+    "en": "Renders the browser as a content view — drives the core native child webview (WKWebView) directly. Built-in URL bar, bookmarks, and devtools toggle."
   },
   "entry": "main.js",
   "permissions": [
-    "programs"
+    "ui",
+    "commands",
+    "programs",
+    "webview",
+    "network",
+    "data"
   ],
   "contributes": {
+    "views": [
+      {
+        "id": "content",
+        "title": {
+          "ko": "브라우저",
+          "en": "Browser"
+        },
+        "icon": "🌐",
+        "placements": ["content"],
+        "defaultPlacement": "content",
+        "transparent": true
+      }
+    ],
     "programs": [
       {
         "id": "browser",
@@ -23,7 +41,82 @@
           "ko": "브라우저",
           "en": "Browser"
         },
-        "kind": "browser"
+        "kind": "view",
+        "view": "content"
+      }
+    ],
+    "commands": [
+      {
+        "name": "ping",
+        "title": {
+          "ko": "플러그인 적재/버전 확인(E2E)",
+          "en": "Ping (load/version check)"
+        }
+      },
+      {
+        "name": "navigate",
+        "title": {
+          "ko": "URL 이동",
+          "en": "Navigate to URL"
+        }
+      },
+      {
+        "name": "back",
+        "title": {
+          "ko": "이전 페이지",
+          "en": "Go Back"
+        }
+      },
+      {
+        "name": "forward",
+        "title": {
+          "ko": "다음 페이지",
+          "en": "Go Forward"
+        }
+      },
+      {
+        "name": "reload",
+        "title": {
+          "ko": "새로고침",
+          "en": "Reload"
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "id": "urlbar",
+        "description": {
+          "ko": "URL 입력창",
+          "en": "URL input bar"
+        }
+      },
+      {
+        "id": "back",
+        "description": {
+          "ko": "이전 버튼",
+          "en": "Back button"
+        }
+      },
+      {
+        "id": "forward",
+        "description": {
+          "ko": "다음 버튼",
+          "en": "Forward button"
+        }
+      },
+      {
+        "id": "reload",
+        "description": {
+          "ko": "새로고침 버튼",
+          "en": "Reload button"
+        }
+      },
+      {
+        "id": "devtools",
+        "description": {
+          "ko": "개발자 도구 버튼",
+          "en": "Developer tools button"
+        }
       }
     ]
   }
