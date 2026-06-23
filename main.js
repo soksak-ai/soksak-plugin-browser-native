@@ -13513,13 +13513,13 @@ function BrowserViewImpl({
   }, [label, webview, ctx]);
   const openExternal = (0, import_react.useCallback)(
     async (url) => {
-      if (!app.commands) return;
       const mode = app.settings.get("browserNewWindow") ?? "tab";
-      if (mode === "window") {
-        console.info(
-          "[browser] browserNewWindow=window: no host capability to open a URL in a new OS window; opening a new tab instead."
-        );
+      if (mode === "window" && webview?.openWindow) {
+        await webview.openWindow(url).catch(() => {
+        });
+        return;
       }
+      if (!app.commands) return;
       setPendingUrl(url);
       const out = await app.commands.execute("view.open", { program: "browser" }).catch(() => null);
       if (!out || !out.ok) {
@@ -13528,7 +13528,7 @@ function BrowserViewImpl({
         });
       }
     },
-    [app.commands, label, webview]
+    [app.commands, app.settings, label, webview]
   );
   (0, import_react.useEffect)(() => {
     if (!label || !webview) return;
