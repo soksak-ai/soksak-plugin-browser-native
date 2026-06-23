@@ -54,6 +54,8 @@ export interface WebviewApi {
   visible: (label: string, visible: boolean) => Promise<void>;
   /** URL 이동. */
   navigate: (label: string, url: string) => Promise<void>;
+  /** URL 을 독립 OS 창(새 브라우저 윈도우)으로 연다. browserNewWindow="window" 모드용. */
+  openWindow: (url: string) => Promise<void>;
   /** 세션 히스토리 이동(delta=-1 뒤/+1 앞). */
   history: (label: string, delta: number) => Promise<void>;
   /** OS 인스펙터(devtools) 토글 → 열림 여부. */
