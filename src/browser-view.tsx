@@ -9,7 +9,7 @@
 import { memo, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { PluginApi, PluginViewContext } from "./host";
 import { t } from "./i18n";
-import { registerLabel, unregisterLabel } from "./commands";
+import { registerLabel, unregisterLabel, setPendingUrl, takePendingUrl } from "./commands";
 
 // ── IME 조합 중 Enter 무시 (코어 imeKeys.ts 이식) ────────────────────────────
 function isComposingEnter(
@@ -285,6 +285,50 @@ function BrowserViewImpl({
       d2.dispose();
     };
   }, [label, webview, ctx]);
+
+  // 새 링크를 browserNewWindow 설정대로 연다.
+  //   "tab"(기본): 대기 URL 설정 후 새 브라우저 콘텐츠 뷰를 연다(mount 가 그 URL 소비).
+  //   "window": 독립 OS 창. "url 로 브라우저 창 생성"은 코어 browser_open_window 인데 플러그인에
+  //             미노출이고, window.new(window_create)는 빈 워크스페이스 창만 만들어 그 안에 url 로
+  //             브라우저를 넣을 타겟팅 표면이 없다 → 코어 추가 필요(보고 참조). 현재는 tab 으로 폴백.
+  const openExternal = useCallback(
+    async (url: string): Promise<void> => {
+      if (!app.commands) return;
+      const mode =
+        (app.settings.get("browserNewWindow") as string | undefined) ?? "tab";
+      if (mode === "window") {
+        // "window" 는 독립 OS 창에 url 브라우저를 띄워야 하지만, 그 capability(코어
+        // browser_open_window)가 플러그인에 미노출이라 지금은 새 탭으로 연다. 코어가
+        // url-브라우저-창 표면을 추가하면 이 분기에서 그 경로로 라우팅한다(보고 참조).
+        console.info(
+          "[browser] browserNewWindow=window: no host capability to open a URL in a new OS window; opening a new tab instead.",
+        );
+      }
+      setPendingUrl(url);
+      const out = await app.commands
+        .execute("view.open", { program: "browser" })
+        .catch(() => null);
+      if (!out || !out.ok) {
+        // 실패 시 대기 URL 을 드레인(null 로)해 다음 mount 가 잘못 소비하지 않게 하고,
+        // 현재 뷰에서 직접 이동(URL 소실 방지).
+        takePendingUrl();
+        if (label && webview) void webview.navigate(label, url).catch(() => {});
+      }
+    },
+    [app.commands, label, webview],
+  );
+
+  // 새 링크(target=_blank / window.open) → openExternal 라우팅. 코어 webview 가 마커
+  // 네비게이션을 가로채 "open-external"({url})을 emit 한다(browser.rs NEW_WINDOW_NAV).
+  // App.tsx 레거시 핸들러를 대체 — 이제 브라우저 플러그인이 소유한다.
+  useEffect(() => {
+    if (!label || !webview) return;
+    const d = webview.on(label, "open-external", (p) => {
+      const url = typeof p.url === "string" ? p.url : "";
+      if (url) void openExternal(url);
+    });
+    return () => d.dispose();
+  }, [label, webview, openExternal]);
 
   const navigate = useCallback((raw: string) => {
     const u = normalizeUrl(raw);

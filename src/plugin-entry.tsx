@@ -3,7 +3,7 @@
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserView } from "./browser-view";
 import { injectStyles } from "./styles";
-import { registerCommands } from "./commands";
+import { registerCommands, takePendingUrl } from "./commands";
 import type { PluginContext, PluginViewContext } from "./host";
 
 const roots = new WeakMap<HTMLElement, Root>();
@@ -40,9 +40,13 @@ export default {
       ctx.subscriptions.push(
         app.ui.registerView("content", {
           mount(container: HTMLElement, vctx: PluginViewContext) {
-            // 기본 URL: 설정에서 homeUrl 읽기(없으면 blank)
+            // 시작 URL 우선순위: 대기 URL(open 명령 / open-external 새 탭이 set) → homeUrl 설정 → blank.
+            // takePendingUrl 은 1회 소비(다음 mount 가 잘못 이어받지 않게).
+            const pending = takePendingUrl();
             const homeUrl =
-              (app.settings.get("homeUrl") as string | undefined) ?? "about:blank";
+              pending ??
+              (app.settings.get("homeUrl") as string | undefined) ??
+              "about:blank";
             mountInto(
               container,
               <BrowserView app={app} ctx={vctx} initialUrl={homeUrl} />,
