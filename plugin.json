@@ -20,6 +20,18 @@
     "network",
     "data"
   ],
+  "configuration": [
+    {
+      "key": "homeUrl",
+      "type": "string",
+      "default": "about:blank",
+      "title": { "ko": "시작 URL", "en": "Start URL" },
+      "description": {
+        "ko": "새 브라우저 탭이 처음 여는 주소.",
+        "en": "Address a new browser tab opens to."
+      }
+    }
+  ],
   "contributes": {
     "views": [
       {
