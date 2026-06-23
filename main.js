@@ -12787,21 +12787,74 @@ function t(key, lang) {
 }
 
 // src/commands.ts
+var pendingOpenUrl = null;
+function setPendingUrl(url) {
+  pendingOpenUrl = url;
+}
+function takePendingUrl() {
+  const u = pendingOpenUrl;
+  pendingOpenUrl = null;
+  return u;
+}
 var activeViews = /* @__PURE__ */ new Map();
+var lastMountedViewId = null;
+var activeViewId = null;
 function registerLabel(viewId, label, getUrl) {
   activeViews.set(viewId, { label, getUrl });
+  lastMountedViewId = viewId;
+  activeViewId = viewId;
 }
 function unregisterLabel(viewId) {
   activeViews.delete(viewId);
+  if (activeViewId === viewId) activeViewId = null;
+  if (lastMountedViewId === viewId) lastMountedViewId = null;
 }
-function firstEntry() {
+function noteActivated(viewId) {
+  if (activeViews.has(viewId)) activeViewId = viewId;
+}
+function resolveEntry(explicitViewId) {
+  if (explicitViewId) return activeViews.get(explicitViewId) ?? null;
+  if (activeViewId && activeViews.has(activeViewId)) {
+    return activeViews.get(activeViewId);
+  }
+  if (lastMountedViewId && activeViews.has(lastMountedViewId)) {
+    return activeViews.get(lastMountedViewId);
+  }
   const iter = activeViews.values().next();
   return iter.done ? null : iter.value;
 }
+function explicitTarget(p) {
+  const raw = p.viewId ?? p.view;
+  return typeof raw === "string" && raw.length > 0 ? raw : void 0;
+}
+var targetParam = {
+  viewId: {
+    type: "string",
+    description: "Target browser view id (e.g. v15). Omit to target the active browser view.",
+    required: false
+  }
+};
+var sel = (s) => JSON.stringify(s);
+async function evalJson(webview, label, body) {
+  const wrapped = `const __r = await (async () => { ${body} })(); return JSON.stringify(__r === undefined ? null : __r);`;
+  const raw = await webview.eval(label, wrapped);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+var NON_MACOS_EVAL_ERR = "eval is macOS-only (WKWebView callAsyncJavaScript)";
 function registerCommands(ctx) {
   const app = ctx.app;
   if (!app.commands) return;
   const sub = (d) => ctx.subscriptions.push(d);
+  sub(
+    app.events.on("view.activated", (payload) => {
+      const viewId = payload?.viewId;
+      if (typeof viewId === "string") noteActivated(viewId);
+    })
+  );
   sub(
     app.commands.register("ping", {
       description: "Browser plugin load/version check (E2E).",
@@ -12815,11 +12868,12 @@ function registerCommands(ctx) {
       description: "Navigate the active browser view to a URL.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC774\uB3D9 URL \uC5F4\uAE30" },
       params: {
-        url: { type: "string", description: "URL to navigate to", required: true }
+        url: { type: "string", description: "URL to navigate to", required: true },
+        ...targetParam
       },
       returns: "{ ok }",
       handler: async (p) => {
-        const entry = firstEntry();
+        const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
         await app.webview.navigate(entry.label, String(p.url ?? ""));
         return { ok: true };
@@ -12830,9 +12884,10 @@ function registerCommands(ctx) {
     app.commands.register("back", {
       description: "Go back in the active browser view history.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC774\uC804 \uB4A4\uB85C" },
+      params: { ...targetParam },
       returns: "{ ok }",
-      handler: async () => {
-        const entry = firstEntry();
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
         await app.webview.history(entry.label, -1);
         return { ok: true };
@@ -12843,9 +12898,10 @@ function registerCommands(ctx) {
     app.commands.register("forward", {
       description: "Go forward in the active browser view history.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uB2E4\uC74C \uC55E\uC73C\uB85C" },
+      params: { ...targetParam },
       returns: "{ ok }",
-      handler: async () => {
-        const entry = firstEntry();
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
         await app.webview.history(entry.label, 1);
         return { ok: true };
@@ -12856,9 +12912,10 @@ function registerCommands(ctx) {
     app.commands.register("reload", {
       description: "Reload the active browser view.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC0C8\uB85C\uACE0\uCE68 \uB9AC\uB85C\uB4DC" },
+      params: { ...targetParam },
       returns: "{ ok }",
-      handler: async () => {
-        const entry = firstEntry();
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
         const url = entry.getUrl();
         if (url && url !== "about:blank") {
@@ -12868,6 +12925,398 @@ function registerCommands(ctx) {
       }
     })
   );
+  sub(
+    app.commands.register("open", {
+      description: "Open a new in-app browser content view (optionally at a URL). Plugin equivalent of the core browser panel.",
+      triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uBDF0 \uC5F4\uAE30 \uC0C8 \uBE0C\uB77C\uC6B0\uC800 \uD0ED \uC778\uC571 \uBE0C\uB77C\uC6B0\uC800" },
+      params: {
+        url: {
+          type: "string",
+          description: "Start URL (omit = settings homeUrl)",
+          required: false
+        }
+      },
+      returns: "{ ok, viewId?, groupId? }",
+      handler: async (p) => {
+        if (!app.commands) return { ok: false, error: "commands API \uC5C6\uC74C" };
+        const url = typeof p.url === "string" && p.url.length > 0 ? p.url : void 0;
+        if (url) setPendingUrl(url);
+        const out = await app.commands.execute("view.open", { program: "browser" });
+        if (!out.ok) {
+          if (url) takePendingUrl();
+          return { ok: false, error: String(out.error ?? "view.open \uC2E4\uD328") };
+        }
+        return { ok: true, viewId: out.viewId, groupId: out.groupId };
+      }
+    })
+  );
+  sub(
+    app.commands.register("devtools", {
+      description: "Toggle the browser Web Inspector (WKWebView has no CDP \u2014 opens the OS inspector in a separate window).",
+      triggers: { ko: "\uAC1C\uBC1C\uC790 \uB3C4\uAD6C \uC778\uC2A4\uD399\uD130 devtools \uC5F4\uAE30 \uB2EB\uAE30" },
+      params: { ...targetParam },
+      returns: "{ ok, open? }",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        const open = await app.webview.devtools(entry.label);
+        return { ok: true, open };
+      }
+    })
+  );
+  sub(
+    app.commands.register("list", {
+      description: "List live native browser webview labels (b-*). Use to detect orphaned webviews.",
+      triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 webview \uBAA9\uB85D \uB77C\uBCA8 \uACE0\uC544 \uD0D0\uC9C0" },
+      params: {},
+      returns: "{ ok, labels: string[] }",
+      handler: async () => {
+        if (!app.webview) return { ok: false, error: "webview API \uC5C6\uC74C" };
+        const labels = await app.webview.list("b-");
+        return { ok: true, labels };
+      }
+    })
+  );
+  sub(
+    app.commands.register("eval", {
+      description: "Execute arbitrary JS in a browser page (async supported; return value serialized as JSON). macOS-only.",
+      triggers: { ko: "JS \uC2E4\uD589 \uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8 \uBE0C\uB77C\uC6B0\uC800 \uC2E4\uD589 \uD398\uC774\uC9C0 \uC2A4\uD06C\uB9BD\uD2B8" },
+      params: {
+        js: {
+          type: "string",
+          description: "JS body to execute (e.g. return document.title)",
+          required: true
+        },
+        ...targetParam
+      },
+      returns: "{ ok, result? }",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        try {
+          const result = await evalJson(app.webview, entry.label, String(p.js ?? ""));
+          return { ok: true, result };
+        } catch (e) {
+          return { ok: false, error: evalErr(e) };
+        }
+      }
+    })
+  );
+  sub(
+    app.commands.register("dom.text", {
+      description: "Get the visible text of the page or a specific selector element.",
+      triggers: { ko: "DOM \uD14D\uC2A4\uD2B8 \uC77D\uAE30 \uD398\uC774\uC9C0 \uD14D\uC2A4\uD2B8 \uC120\uD0DD\uC790 \uD14D\uC2A4\uD2B8" },
+      params: {
+        selector: { type: "string", description: "CSS selector (omit = entire body)", required: false },
+        maxLength: { type: "number", description: "Max character length", required: false },
+        ...targetParam
+      },
+      returns: "{ ok, text? }",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        const max = typeof p.maxLength === "number" ? p.maxLength : 2e4;
+        const js = p.selector ? `const el = document.querySelector(${sel(String(p.selector))}); return el ? el.innerText.slice(0, ${max}) : null;` : `return document.body.innerText.slice(0, ${max});`;
+        try {
+          const text = await evalJson(app.webview, entry.label, js);
+          return { ok: true, text };
+        } catch (e) {
+          return { ok: false, error: evalErr(e) };
+        }
+      }
+    })
+  );
+  sub(
+    app.commands.register("dom.html", {
+      description: "Get the HTML of the page or a specific selector element.",
+      triggers: { ko: "DOM HTML \uC77D\uAE30 \uD398\uC774\uC9C0 HTML \uC120\uD0DD\uC790 \uB9C8\uD06C\uC5C5" },
+      params: {
+        selector: { type: "string", description: "CSS selector (omit = entire document)", required: false },
+        maxLength: { type: "number", description: "Max character length", required: false },
+        ...targetParam
+      },
+      returns: "{ ok, html? }",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        const max = typeof p.maxLength === "number" ? p.maxLength : 5e4;
+        const js = p.selector ? `const el = document.querySelector(${sel(String(p.selector))}); return el ? el.outerHTML.slice(0, ${max}) : null;` : `return document.documentElement.outerHTML.slice(0, ${max});`;
+        try {
+          const html = await evalJson(app.webview, entry.label, js);
+          return { ok: true, html };
+        } catch (e) {
+          return { ok: false, error: evalErr(e) };
+        }
+      }
+    })
+  );
+  sub(
+    app.commands.register("dom.query", {
+      description: "Summarize matching elements (tag / text / attributes) for a CSS selector \u2014 use to understand page structure.",
+      triggers: { ko: "DOM \uC694\uC18C \uC870\uD68C \uC120\uD0DD\uC790 \uB9E4\uCE6D \uAD6C\uC870 \uD30C\uC545" },
+      params: {
+        selector: { type: "string", description: "CSS selector", required: true },
+        limit: { type: "number", description: "Max element count", required: false },
+        ...targetParam
+      },
+      returns: "{ ok, count?, elements? }",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        const limit = typeof p.limit === "number" ? p.limit : 20;
+        const js = `
+          const all = [...document.querySelectorAll(${sel(String(p.selector))})];
+          return { count: all.length, elements: all.slice(0, ${limit}).map(e => ({
+            tag: e.tagName.toLowerCase(),
+            text: (e.innerText || "").trim().slice(0, 120) || undefined,
+            id: e.id || undefined,
+            class: (typeof e.className === "string" && e.className) || undefined,
+            name: e.getAttribute("name") || undefined,
+            href: e.getAttribute("href") || undefined,
+            type: e.getAttribute("type") || undefined,
+            value: e.value !== undefined ? String(e.value).slice(0, 120) : undefined,
+          })) };`;
+        try {
+          const r = await evalJson(app.webview, entry.label, js);
+          return { ok: true, ...r };
+        } catch (e) {
+          return { ok: false, error: evalErr(e) };
+        }
+      }
+    })
+  );
+  sub(
+    app.commands.register("dom.click", {
+      description: "Click the first element matching a CSS selector.",
+      triggers: { ko: "DOM \uD074\uB9AD \uBC84\uD2BC \uD074\uB9AD \uB9C1\uD06C \uD074\uB9AD \uD398\uC774\uC9C0 \uD074\uB9AD" },
+      params: {
+        selector: { type: "string", description: "CSS selector", required: true },
+        ...targetParam
+      },
+      returns: "{ ok, clicked? }",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        const js = `const el = document.querySelector(${sel(String(p.selector))}); if (!el) return { clicked: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" }; el.click(); return { clicked: true };`;
+        try {
+          const r = await evalJson(app.webview, entry.label, js);
+          return { ok: true, ...r };
+        } catch (e) {
+          return { ok: false, error: evalErr(e) };
+        }
+      }
+    })
+  );
+  sub(
+    app.commands.register("dom.fill", {
+      description: "Fill an input element with a value (fires input/change events \u2014 React form compatible).",
+      triggers: { ko: "DOM \uC785\uB825 \uCC44\uC6B0\uAE30 \uD3FC \uC785\uB825 \uD14D\uC2A4\uD2B8 \uC785\uB825 \uD544\uB4DC \uCC44\uC6B0\uAE30" },
+      params: {
+        selector: { type: "string", description: "CSS selector", required: true },
+        text: { type: "string", description: "Value to enter", required: true },
+        ...targetParam
+      },
+      returns: "{ ok, filled? }",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        const js = `
+          const el = document.querySelector(${sel(String(p.selector))});
+          if (!el) return { filled: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
+          const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+          if (setter) setter.call(el, ${sel(String(p.text ?? ""))}); else el.value = ${sel(String(p.text ?? ""))};
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          return { filled: true };`;
+        try {
+          const r = await evalJson(app.webview, entry.label, js);
+          return { ok: true, ...r };
+        } catch (e) {
+          return { ok: false, error: evalErr(e) };
+        }
+      }
+    })
+  );
+  sub(
+    app.commands.register("dom.submit", {
+      description: "Submit a form (selector can be the form element or any element inside it).",
+      triggers: { ko: "\uD3FC \uC81C\uCD9C submit \uC804\uC1A1 \uC591\uC2DD \uC81C\uCD9C" },
+      params: {
+        selector: { type: "string", description: "CSS selector", required: true },
+        ...targetParam
+      },
+      returns: "{ ok, submitted? }",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        const js = `
+          const el = document.querySelector(${sel(String(p.selector))});
+          if (!el) return { submitted: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
+          const form = el instanceof HTMLFormElement ? el : el.closest("form");
+          if (!form) return { submitted: false, reason: "form \uC5C6\uC74C" };
+          form.requestSubmit ? form.requestSubmit() : form.submit();
+          return { submitted: true };`;
+        try {
+          const r = await evalJson(app.webview, entry.label, js);
+          return { ok: true, ...r };
+        } catch (e) {
+          return { ok: false, error: evalErr(e) };
+        }
+      }
+    })
+  );
+  sub(
+    app.commands.register("dom.wait-for", {
+      description: "Wait until a selector appears on the page (dynamic pages \u2014 uses MutationObserver).",
+      triggers: { ko: "\uC694\uC18C \uB300\uAE30 \uB098\uD0C0\uB0A0 \uB54C\uAE4C\uC9C0 \uAE30\uB2E4\uB9AC\uAE30 \uB3D9\uC801 \uB85C\uB529 \uB300\uAE30" },
+      params: {
+        selector: { type: "string", description: "CSS selector", required: true },
+        timeoutMs: { type: "number", description: "Max wait time (ms)", required: false },
+        ...targetParam
+      },
+      returns: "{ ok, found? }",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 5e3;
+        const js = `
+          const find = () => document.querySelector(${sel(String(p.selector))});
+          if (find()) return { found: true };
+          return await new Promise((resolve) => {
+            const obs = new MutationObserver(() => {
+              if (find()) { obs.disconnect(); clearTimeout(timer); resolve({ found: true }); }
+            });
+            const timer = setTimeout(() => { obs.disconnect(); resolve({ found: false }); }, ${timeoutMs});
+            obs.observe(document.documentElement, { childList: true, subtree: true });
+          });`;
+        try {
+          const r = await evalJson(app.webview, entry.label, js);
+          return { ok: true, ...r };
+        } catch (e) {
+          return { ok: false, error: evalErr(e) };
+        }
+      }
+    })
+  );
+  sub(
+    app.commands.register("media.sniff", {
+      description: "Harvest media URLs (m3u8/mpd/mp4/...) the active page requested \u2014 captured passively by the core init-script hook (window.__soksakMedia). Site-agnostic. macOS-only.",
+      triggers: { ko: "\uBBF8\uB514\uC5B4 \uC2A4\uB2C8\uD504 \uCD94\uCD9C m3u8 \uC2A4\uD2B8\uB9BC \uD398\uC774\uC9C0 \uCEA1\uCC98 \uAC00\uB85C\uCC44\uAE30 \uB3D9\uC601\uC0C1" },
+      params: {
+        timeoutMs: { type: "number", description: "Max wait for a hit (ms)", required: false },
+        autoplay: { type: "boolean", description: "Call video.play() to provoke the stream request", required: false },
+        pattern: { type: "string", description: "Only return URLs matching this regex (e.g. m3u8)", required: false },
+        ...targetParam
+      },
+      returns: "{ ok, urls? }",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        const webview = app.webview;
+        const label = entry.label;
+        const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 8e3;
+        const autoplay = p.autoplay !== false;
+        const re = p.pattern ? new RegExp(String(p.pattern), "i") : null;
+        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+        const deadline = Date.now() + Math.max(500, timeoutMs);
+        let triggered = false;
+        try {
+          for (; ; ) {
+            const raw = await evalJson(
+              webview,
+              label,
+              "return JSON.stringify(window.__soksakMedia || [])"
+            );
+            let hits = [];
+            try {
+              hits = typeof raw === "string" ? JSON.parse(raw) : raw;
+            } catch {
+              hits = [];
+            }
+            const urls = re ? hits.filter((h) => re.test(h.url)) : hits;
+            if (urls.length > 0) return { ok: true, urls };
+            if (autoplay && !triggered) {
+              triggered = true;
+              await evalJson(
+                webview,
+                label,
+                "try { var v = document.querySelector('video'); if (v) { v.muted = true; v.play && v.play().catch(function(){}); } } catch(e){} return null;"
+              );
+            }
+            if (Date.now() >= deadline) return { ok: true, urls: [] };
+            await delay(400);
+          }
+        } catch (e) {
+          return { ok: false, error: evalErr(e) };
+        }
+      }
+    })
+  );
+  sub(
+    app.commands.register("media.extract", {
+      description: "Extract media URLs from a page WITHOUT showing it \u2014 opens an offscreen webview, lets it load (the core hook sniffs its own media requests), then closes it. Site-agnostic. macOS-only.",
+      triggers: { ko: "\uBBF8\uB514\uC5B4 \uCD94\uCD9C \uC228\uAE40 \uC624\uD504\uC2A4\uD06C\uB9B0 m3u8 \uC2A4\uD2B8\uB9BC \uD398\uC774\uC9C0 \uAC00\uB85C\uCC44\uAE30 \uB3D9\uC601\uC0C1" },
+      params: {
+        url: { type: "string", description: "Page URL to load offscreen and extract from", required: true },
+        timeoutMs: { type: "number", description: "Max wait for a media hit (ms)", required: false }
+      },
+      returns: "{ ok, urls? }",
+      handler: async (p) => {
+        if (!app.webview) return { ok: false, error: "webview API \uC5C6\uC74C" };
+        const url = typeof p.url === "string" ? p.url : "";
+        if (!url) return { ok: false, error: "url \uD544\uC694" };
+        const webview = app.webview;
+        const timeoutMs = Math.max(1e3, typeof p.timeoutMs === "number" ? p.timeoutMs : 15e3);
+        const label = `media-extract-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+        const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+        try {
+          await webview.open(label, { url, x: -2e4, y: -2e4, w: 1280, h: 720 });
+          const deadline = Date.now() + timeoutMs;
+          let triggered = false;
+          let hits = [];
+          for (; ; ) {
+            const raw = await evalJson(
+              webview,
+              label,
+              "return JSON.stringify(window.__soksakMedia || [])"
+            );
+            let arr = [];
+            try {
+              arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+            } catch {
+              arr = [];
+            }
+            if (arr.length > 0) {
+              hits = arr;
+              if (arr.some((h) => typeof h.url === "string" && h.url.includes(".m3u8"))) break;
+            }
+            if (!triggered) {
+              triggered = true;
+              await evalJson(
+                webview,
+                label,
+                "try{var v=document.querySelector('video'); if(v){v.muted=true; v.play&&v.play().catch(function(){});}}catch(e){} return null;"
+              );
+            }
+            if (Date.now() >= deadline) break;
+            await delay(400);
+          }
+          return { ok: true, urls: hits };
+        } catch (e) {
+          return { ok: false, error: evalErr(e) };
+        } finally {
+          await webview.close(label).catch(() => {
+          });
+        }
+      }
+    })
+  );
+}
+function evalErr(e) {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/macOS|not.*support|unsupported/i.test(msg)) return NON_MACOS_EVAL_ERR;
+  return msg;
 }
 
 // src/browser-view.tsx
@@ -13062,6 +13511,33 @@ function BrowserViewImpl({
       d2.dispose();
     };
   }, [label, webview, ctx]);
+  const openExternal = (0, import_react.useCallback)(
+    async (url) => {
+      if (!app.commands) return;
+      const mode = app.settings.get("browserNewWindow") ?? "tab";
+      if (mode === "window") {
+        console.info(
+          "[browser] browserNewWindow=window: no host capability to open a URL in a new OS window; opening a new tab instead."
+        );
+      }
+      setPendingUrl(url);
+      const out = await app.commands.execute("view.open", { program: "browser" }).catch(() => null);
+      if (!out || !out.ok) {
+        takePendingUrl();
+        if (label && webview) void webview.navigate(label, url).catch(() => {
+        });
+      }
+    },
+    [app.commands, label, webview]
+  );
+  (0, import_react.useEffect)(() => {
+    if (!label || !webview) return;
+    const d = webview.on(label, "open-external", (p) => {
+      const url = typeof p.url === "string" ? p.url : "";
+      if (url) void openExternal(url);
+    });
+    return () => d.dispose();
+  }, [label, webview, openExternal]);
   const navigate = (0, import_react.useCallback)((raw) => {
     const u = normalizeUrl(raw);
     setLocalUrl(u);
@@ -13359,7 +13835,8 @@ var plugin_entry_default = {
       ctx.subscriptions.push(
         app.ui.registerView("content", {
           mount(container, vctx) {
-            const homeUrl = app.settings.get("homeUrl") ?? "about:blank";
+            const pending = takePendingUrl();
+            const homeUrl = pending ?? app.settings.get("homeUrl") ?? "about:blank";
             mountInto(
               container,
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BrowserView, { app, ctx: vctx, initialUrl: homeUrl })

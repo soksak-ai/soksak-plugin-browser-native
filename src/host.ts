@@ -58,12 +58,23 @@ export interface WebviewApi {
   history: (label: string, delta: number) => Promise<void>;
   /** OS 인스펙터(devtools) 토글 → 열림 여부. */
   devtools: (label: string) => Promise<boolean>;
-  /** webview 이벤트 구독: "nav"({url})·"title"({title}). 반환=해지. */
+  /** 페이지에서 JS 실행 후 결과 문자열 반환(AI/E2E DOM 제어). macOS 한정. */
+  eval: (label: string, js: string) => Promise<string>;
+  /** init script 주입(document-start/end, 매 내비게이션 재주입). macOS 한정(비-macOS no-op).
+   *  반환 Disposable 은 추적용 — WKUserScript 개별 제거는 미지원(webview 수명까지 유지). */
+  injectScript: (
+    label: string,
+    code: string,
+    phase?: "document-start" | "document-end",
+  ) => Disposable;
+  /** webview 이벤트 구독: "nav"({url})·"title"({title})·"status"·"open-external"({url}). 반환=해지. */
   on: (
     label: string,
     event: "nav" | "title" | "status" | "open-external",
     cb: (payload: Record<string, unknown>) => void,
   ) => Disposable;
+  /** 현재 살아있는 webview label 목록(prefix 필터). GC/정리용. */
+  list: (prefix?: string) => Promise<string[]>;
   /** webview 종료 + 정리. */
   close: (label: string) => Promise<void>;
 }

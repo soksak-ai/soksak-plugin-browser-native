@@ -30,6 +30,21 @@
         "ko": "새 브라우저 탭이 처음 여는 주소.",
         "en": "Address a new browser tab opens to."
       }
+    },
+    {
+      "key": "browserNewWindow",
+      "type": "enum",
+      "enum": ["tab", "window"],
+      "enumLabels": [
+        { "ko": "새 탭", "en": "New tab" },
+        { "ko": "새 창", "en": "New window" }
+      ],
+      "default": "tab",
+      "title": { "ko": "새 링크 열기", "en": "Open new links in" },
+      "description": {
+        "ko": "target=_blank / window.open 새 링크를 새 탭(앱 내 브라우저 뷰) 또는 독립 OS 창으로 연다.",
+        "en": "Open target=_blank / window.open links as a new tab (in-app browser view) or an independent OS window."
+      }
     }
   ],
   "contributes": {
@@ -92,6 +107,103 @@
           "ko": "새로고침",
           "en": "Reload"
         }
+      },
+      {
+        "name": "open",
+        "title": {
+          "ko": "브라우저 뷰 열기",
+          "en": "Open browser view"
+        }
+      },
+      {
+        "name": "devtools",
+        "title": {
+          "ko": "개발자 도구 토글",
+          "en": "Toggle devtools"
+        }
+      },
+      {
+        "name": "list",
+        "title": {
+          "ko": "브라우저 webview 목록",
+          "en": "List browser webviews"
+        }
+      },
+      {
+        "name": "eval",
+        "title": {
+          "ko": "JS 실행",
+          "en": "Evaluate JS"
+        },
+        "danger": "inject"
+      },
+      {
+        "name": "dom.text",
+        "title": {
+          "ko": "DOM 텍스트 읽기",
+          "en": "Get DOM text"
+        }
+      },
+      {
+        "name": "dom.html",
+        "title": {
+          "ko": "DOM HTML 읽기",
+          "en": "Get DOM HTML"
+        }
+      },
+      {
+        "name": "dom.query",
+        "title": {
+          "ko": "DOM 요소 조회",
+          "en": "Query DOM elements"
+        }
+      },
+      {
+        "name": "dom.click",
+        "title": {
+          "ko": "DOM 클릭",
+          "en": "Click DOM element"
+        },
+        "danger": "inject"
+      },
+      {
+        "name": "dom.fill",
+        "title": {
+          "ko": "DOM 입력 채우기",
+          "en": "Fill DOM input"
+        },
+        "danger": "inject"
+      },
+      {
+        "name": "dom.submit",
+        "title": {
+          "ko": "폼 제출",
+          "en": "Submit form"
+        },
+        "danger": "inject"
+      },
+      {
+        "name": "dom.wait-for",
+        "title": {
+          "ko": "요소 대기",
+          "en": "Wait for element"
+        }
+      },
+      {
+        "name": "media.sniff",
+        "title": {
+          "ko": "미디어 스니프",
+          "en": "Sniff media URLs"
+        },
+        "danger": "inject"
+      },
+      {
+        "name": "media.extract",
+        "title": {
+          "ko": "미디어 추출(오프스크린)",
+          "en": "Extract media (offscreen)"
+        },
+        "danger": "inject"
       }
     ],
     "nodes": [
