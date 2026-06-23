@@ -244,7 +244,11 @@ function BrowserViewImpl({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [label]);
 
-  // bounds 구동원: ResizeObserver + window resize(useSessions 없는 대체).
+  // bounds 구동원. 네이티브 webview 는 DOM 슬롯(.bv-area)을 추종해야 하는데, DOM 에는 "위치 이동"
+  // 이벤트가 없다(ResizeObserver 는 크기 변화만). 코어 BrowserView 는 sessions.subscribe(레이아웃 쓰기)
+  // 로 위치 이동을 잡았지만 플러그인은 코어 스토어에 접근 못 한다 → 표준 기법인 rAF 위치 추종으로 대체.
+  // syncBounds 는 정수 rect 동일이면 IPC 를 보내지 않으므로(같은-rect skip) 정지 상태의 비용은
+  // getBoundingClientRect 1회/프레임뿐(폴링이 아니라 위치 추종 — 값이 바뀔 때만 네이티브로 전달).
   useEffect(() => {
     const el = areaRef.current;
     if (!el) return;
@@ -252,9 +256,16 @@ function BrowserViewImpl({
     ro.observe(el);
     const onWinResize = () => syncBounds();
     window.addEventListener("resize", onWinResize);
+    let raf = 0;
+    const track = () => {
+      syncBounds();
+      raf = requestAnimationFrame(track);
+    };
+    raf = requestAnimationFrame(track);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", onWinResize);
+      cancelAnimationFrame(raf);
     };
   }, [syncBounds]);
 

@@ -13035,9 +13035,16 @@ function BrowserViewImpl({
     ro.observe(el);
     const onWinResize = () => syncBounds();
     window.addEventListener("resize", onWinResize);
+    let raf = 0;
+    const track = () => {
+      syncBounds();
+      raf = requestAnimationFrame(track);
+    };
+    raf = requestAnimationFrame(track);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", onWinResize);
+      cancelAnimationFrame(raf);
     };
   }, [syncBounds]);
   (0, import_react.useEffect)(() => {
