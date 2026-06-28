@@ -6,7 +6,7 @@
 //   - useSessions 구독 제거 → ResizeObserver + window resize 로 대체
 //   - 아이콘: lucide-style inline SVG(코어 Icon 컴포넌트 비의존)
 
-import { memo, useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { memo, useEffect, useRef, useState, useCallback } from "react";
 import type { PluginApi, PluginViewContext } from "./host";
 import { t } from "./i18n";
 import { registerLabel, unregisterLabel, setPendingUrl, takePendingUrl } from "./commands";
@@ -18,34 +18,12 @@ function isComposingEnter(
   return e.key === "Enter" && (e.nativeEvent.isComposing || e.keyCode === 229);
 }
 
-// ── rafThrottle (코어 rafThrottle.ts 이식) ────────────────────────────────────
-interface RafThrottled {
-  (): void;
-  cancel(): void;
-}
-
-function rafThrottle(fn: () => void): RafThrottled {
-  let rafId = 0;
-  let pending = false;
-
-  const invoke = () => {
-    rafId = 0;
-    if (!pending) return;
-    pending = false;
-    fn();
-  };
-
-  const throttled = () => {
-    pending = true;
-    if (!rafId) rafId = requestAnimationFrame(invoke);
-  };
-  throttled.cancel = () => {
-    if (rafId) cancelAnimationFrame(rafId);
-    rafId = 0;
-    pending = false;
-  };
-  return throttled;
-}
+// 드래그(라이브 리사이즈) 중 네이티브 webview 재배치 상한. WKWebView set_size 는 비싸서
+// 매 프레임(60~120Hz) 호출하면 OS 자체 라이브 리사이즈와 겹쳐 CPU 가 폭발한다 → ~30Hz 로
+// 제한하고 드래그 끝에 정확한 최종 rect 로 1회 스냅한다(시각 추종은 유지).
+const LIVE_THROTTLE_MS = 32;
+// 슬롯 rect 가 이 프레임 수만큼 연속 무변화면(=드래그 아님) 추종 루프를 멈춘다(idle 폴링 0).
+const STABLE_STOP_FRAMES = 4;
 
 // ── URL 정규화 (코어 BrowserView.tsx 와 동일) ────────────────────────────────
 function normalizeUrl(input: string): string {
@@ -136,6 +114,10 @@ function BrowserViewImpl({
   const areaRef = useRef<HTMLDivElement>(null);
   const openedRef = useRef(false);
   const lastRectRef = useRef("");
+  // 라이브 리사이즈(가장자리 드래그) 진행 여부 — 코어 app.events("window.live-resize") 게이트.
+  const liveRef = useRef(false);
+  // 마지막으로 네이티브 bounds 를 보낸 시각(드래그 중 ~30Hz 스로틀 기준).
+  const lastSentRef = useRef(0);
   // 최신 visible 값 — open 완료 시점에 재적용(생성 경쟁 보정).
   // 콘텐츠 배치에서는 항상 visible=true. 탭 전환 숨김은 코어가 처리한다.
   const [localUrl, setLocalUrl] = useState(initialUrl);
@@ -182,23 +164,31 @@ function BrowserViewImpl({
     if (!inputFocusRef.current) setInput(localUrl);
   }, [localUrl]);
 
-  // bounds sync — rAF 스로틀(프레임당 1회 상한, 동일 rect skip).
-  const syncBounds = useMemo(
-    () =>
-      rafThrottle(() => {
-        const el = areaRef.current;
-        if (!el || !openedRef.current || !webview || !label) return;
-        const r = el.getBoundingClientRect();
-        // 정수 스냅: rect 소수점 → 네이티브 반올림이 홀과 어긋남 방지(ceil/floor).
-        const x = Math.ceil(r.left);
-        const y = Math.ceil(r.top);
-        const w = Math.max(1, Math.floor(r.right) - x);
-        const h = Math.max(1, Math.floor(r.bottom) - y);
-        const key = `${x},${y},${w},${h}`;
-        if (key === lastRectRef.current) return;
-        lastRectRef.current = key;
-        void webview.bounds(label, x, y, w, h);
-      }),
+  // bounds 측정+전송. 반환: "sent"=네이티브로 보냄 / "pending"=변화 있으나 드래그 스로틀로
+  // 보류(다음 프레임 재시도) / "same"=무변화. 동일 rect 는 IPC 를 보내지 않고(skip), 드래그
+  // 중(liveRef)엔 네이티브 재배치를 LIVE_THROTTLE_MS(~30Hz)로 제한한다. force=드래그 끝의
+  // 정확 스냅(스로틀 무시).
+  const syncBounds = useCallback(
+    (force = false): "sent" | "pending" | "same" => {
+      const el = areaRef.current;
+      if (!el || !openedRef.current || !webview || !label) return "same";
+      const r = el.getBoundingClientRect();
+      // 정수 스냅: rect 소수점 → 네이티브 반올림이 홀과 어긋남 방지(ceil/floor).
+      const x = Math.ceil(r.left);
+      const y = Math.ceil(r.top);
+      const w = Math.max(1, Math.floor(r.right) - x);
+      const h = Math.max(1, Math.floor(r.bottom) - y);
+      const key = `${x},${y},${w},${h}`;
+      if (key === lastRectRef.current) return "same";
+      if (!force && liveRef.current) {
+        // 변화는 있으나 직전 전송 후 스로틀 간격 전 → 보류(rect/시각은 다음 프레임에 반영).
+        if (performance.now() - lastSentRef.current < LIVE_THROTTLE_MS) return "pending";
+      }
+      lastRectRef.current = key;
+      lastSentRef.current = performance.now();
+      void webview.bounds(label, x, y, w, h);
+      return "sent";
+    },
     [webview, label],
   );
 
@@ -239,35 +229,73 @@ function BrowserViewImpl({
       openedRef.current = false;
       unregisterLabel(ctx.viewId!);
       void webview.close(label).catch(() => {});
-      syncBounds.cancel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [label]);
 
-  // bounds 구동원. 네이티브 webview 는 DOM 슬롯(.bv-area)을 추종해야 하는데, DOM 에는 "위치 이동"
-  // 이벤트가 없다(ResizeObserver 는 크기 변화만). 코어 BrowserView 는 sessions.subscribe(레이아웃 쓰기)
-  // 로 위치 이동을 잡았지만 플러그인은 코어 스토어에 접근 못 한다 → 표준 기법인 rAF 위치 추종으로 대체.
-  // syncBounds 는 정수 rect 동일이면 IPC 를 보내지 않으므로(같은-rect skip) 정지 상태의 비용은
-  // getBoundingClientRect 1회/프레임뿐(폴링이 아니라 위치 추종 — 값이 바뀔 때만 네이티브로 전달).
+  // bounds 구동원 — 네이티브 webview 가 DOM 슬롯(.bv-area)을 추종한다. DOM 엔 "위치 이동"
+  // 이벤트가 없어(ResizeObserver 는 크기만) 추종에 rAF 가 필요하지만, 영구 60fps rAF 폴링은
+  // idle 에도 매 프레임 getBoundingClientRect(강제 reflow)를 태우고, 리사이즈 중엔 매 프레임
+  // 네이티브 재배치를 유발해 CPU 가 폭발한다. 그래서 "움직일 때만" 도는 자가종료 추종 루프로
+  // 바꾼다:
+  //   - rect 가 STABLE_STOP_FRAMES 연속 무변화면 루프를 멈춘다(idle 폴링 0).
+  //   - 실제 트리거에서만 다시 깨운다: 슬롯 리사이즈(분할/사이드바)·창 리사이즈·라이브
+  //     드래그(코어 신호)·포인터 드래그(분할 divider·사이드바 리사이저 = 슬롯 "이동"인데
+  //     크기는 안 바뀔 수 있어 ResizeObserver 가 못 잡는 경우).
+  //   - 드래그(liveRef) 중엔 syncBounds 가 네이티브 재배치를 ~30Hz 로 스로틀, 끝에 1회 정확 스냅.
   useEffect(() => {
     const el = areaRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => syncBounds());
-    ro.observe(el);
-    const onWinResize = () => syncBounds();
-    window.addEventListener("resize", onWinResize);
-    let raf = 0;
-    const track = () => {
-      syncBounds();
-      raf = requestAnimationFrame(track);
+
+    let rafId = 0;
+    let stable = 0;
+    const tick = () => {
+      rafId = 0;
+      const s = syncBounds();
+      stable = s === "same" ? stable + 1 : 0;
+      // 드래그 중이거나 아직 안정 전이면 계속 추종, 아니면 멈춘다(idle 0).
+      if (liveRef.current || stable < STABLE_STOP_FRAMES) {
+        rafId = requestAnimationFrame(tick);
+      }
     };
-    raf = requestAnimationFrame(track);
+    const arm = () => {
+      stable = 0;
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    };
+
+    const ro = new ResizeObserver(arm);
+    ro.observe(el);
+    const onWinResize = () => arm();
+    window.addEventListener("resize", onWinResize);
+    // 포인터 드래그(분할 divider·사이드바 리사이저)는 슬롯을 이동시키지만 크기는 안 바꿀 수
+    // 있다(ResizeObserver 미발화) → 드래그 동안만 추종을 깨운다. 버튼 눌림(e.buttons)일 때만.
+    const onPointerDown = () => arm();
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.buttons) arm();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onPointerMove, true);
+
+    // 라이브 리사이즈 게이트(코어 네이티브 신호 — app.focus 와 동형 채널). 시작=추종 깨움
+    // (스로틀 적용), 끝=정확한 최종 rect 로 1회 강제 스냅 후 잔여 레이아웃 정착 보정.
+    const offLive = app.events.on("window.live-resize", (p) => {
+      const active = !!(p as { active?: boolean }).active;
+      liveRef.current = active;
+      if (!active) syncBounds(true);
+      arm();
+    });
+
+    arm(); // 초기 정착 1회.
+
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", onWinResize);
-      cancelAnimationFrame(raf);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointermove", onPointerMove, true);
+      offLive.dispose();
+      if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [syncBounds]);
+  }, [syncBounds, app]);
 
   // webview nav 이벤트 → localUrl 동기화 + ctx.setTitle
   useEffect(() => {

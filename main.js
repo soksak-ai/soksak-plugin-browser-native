@@ -13324,26 +13324,8 @@ var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
 function isComposingEnter(e) {
   return e.key === "Enter" && (e.nativeEvent.isComposing || e.keyCode === 229);
 }
-function rafThrottle(fn) {
-  let rafId = 0;
-  let pending = false;
-  const invoke = () => {
-    rafId = 0;
-    if (!pending) return;
-    pending = false;
-    fn();
-  };
-  const throttled = () => {
-    pending = true;
-    if (!rafId) rafId = requestAnimationFrame(invoke);
-  };
-  throttled.cancel = () => {
-    if (rafId) cancelAnimationFrame(rafId);
-    rafId = 0;
-    pending = false;
-  };
-  return throttled;
-}
+var LIVE_THROTTLE_MS = 32;
+var STABLE_STOP_FRAMES = 4;
 function normalizeUrl(input) {
   const s = input.trim();
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(s)) return s;
@@ -13392,6 +13374,8 @@ function BrowserViewImpl({
   const areaRef = (0, import_react.useRef)(null);
   const openedRef = (0, import_react.useRef)(false);
   const lastRectRef = (0, import_react.useRef)("");
+  const liveRef = (0, import_react.useRef)(false);
+  const lastSentRef = (0, import_react.useRef)(0);
   const [localUrl, setLocalUrl] = (0, import_react.useState)(initialUrl);
   const localUrlRef = (0, import_react.useRef)(initialUrl);
   const [input, setInput] = (0, import_react.useState)(initialUrl);
@@ -13428,20 +13412,25 @@ function BrowserViewImpl({
     localUrlRef.current = localUrl;
     if (!inputFocusRef.current) setInput(localUrl);
   }, [localUrl]);
-  const syncBounds = (0, import_react.useMemo)(
-    () => rafThrottle(() => {
+  const syncBounds = (0, import_react.useCallback)(
+    (force = false) => {
       const el = areaRef.current;
-      if (!el || !openedRef.current || !webview || !label) return;
+      if (!el || !openedRef.current || !webview || !label) return "same";
       const r = el.getBoundingClientRect();
       const x = Math.ceil(r.left);
       const y = Math.ceil(r.top);
       const w = Math.max(1, Math.floor(r.right) - x);
       const h = Math.max(1, Math.floor(r.bottom) - y);
       const key = `${x},${y},${w},${h}`;
-      if (key === lastRectRef.current) return;
+      if (key === lastRectRef.current) return "same";
+      if (!force && liveRef.current) {
+        if (performance.now() - lastSentRef.current < LIVE_THROTTLE_MS) return "pending";
+      }
       lastRectRef.current = key;
+      lastSentRef.current = performance.now();
       void webview.bounds(label, x, y, w, h);
-    }),
+      return "sent";
+    },
     [webview, label]
   );
   (0, import_react.useEffect)(() => {
@@ -13474,28 +13463,51 @@ function BrowserViewImpl({
       unregisterLabel(ctx.viewId);
       void webview.close(label).catch(() => {
       });
-      syncBounds.cancel();
     };
   }, [label]);
   (0, import_react.useEffect)(() => {
     const el = areaRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => syncBounds());
-    ro.observe(el);
-    const onWinResize = () => syncBounds();
-    window.addEventListener("resize", onWinResize);
-    let raf = 0;
-    const track = () => {
-      syncBounds();
-      raf = requestAnimationFrame(track);
+    let rafId = 0;
+    let stable = 0;
+    const tick = () => {
+      rafId = 0;
+      const s = syncBounds();
+      stable = s === "same" ? stable + 1 : 0;
+      if (liveRef.current || stable < STABLE_STOP_FRAMES) {
+        rafId = requestAnimationFrame(tick);
+      }
     };
-    raf = requestAnimationFrame(track);
+    const arm = () => {
+      stable = 0;
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    };
+    const ro = new ResizeObserver(arm);
+    ro.observe(el);
+    const onWinResize = () => arm();
+    window.addEventListener("resize", onWinResize);
+    const onPointerDown = () => arm();
+    const onPointerMove = (e) => {
+      if (e.buttons) arm();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onPointerMove, true);
+    const offLive = app.events.on("window.live-resize", (p) => {
+      const active = !!p.active;
+      liveRef.current = active;
+      if (!active) syncBounds(true);
+      arm();
+    });
+    arm();
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", onWinResize);
-      cancelAnimationFrame(raf);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointermove", onPointerMove, true);
+      offLive.dispose();
+      if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [syncBounds]);
+  }, [syncBounds, app]);
   (0, import_react.useEffect)(() => {
     if (!label || !webview) return;
     const d1 = webview.on(label, "nav", (p) => {
