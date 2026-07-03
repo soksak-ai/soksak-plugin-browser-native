@@ -13375,6 +13375,8 @@ function BrowserViewImpl({
   const openedRef = (0, import_react.useRef)(false);
   const lastRectRef = (0, import_react.useRef)("");
   const liveRef = (0, import_react.useRef)(false);
+  const gestureRef = (0, import_react.useRef)(false);
+  const [freeze, setFreeze] = (0, import_react.useState)(null);
   const lastSentRef = (0, import_react.useRef)(0);
   const [localUrl, setLocalUrl] = (0, import_react.useState)(initialUrl);
   const localUrlRef = (0, import_react.useRef)(initialUrl);
@@ -13414,6 +13416,7 @@ function BrowserViewImpl({
   }, [localUrl]);
   const syncBounds = (0, import_react.useCallback)(
     (force = false) => {
+      if (gestureRef.current && !force) return "same";
       const el = areaRef.current;
       if (!el || !openedRef.current || !webview || !label) return "same";
       const r = el.getBoundingClientRect();
@@ -13498,6 +13501,29 @@ function BrowserViewImpl({
       if (!active) syncBounds(true);
       arm();
     });
+    const offGesture = app.events.on("layout.resize-gesture", (p) => {
+      const active = !!p.active;
+      gestureRef.current = active;
+      if (active) {
+        const area = areaRef.current;
+        if (area && webview && openedRef.current) {
+          const r = area.getBoundingClientRect();
+          const rect = { x: r.left, y: r.top, w: r.width, h: r.height };
+          if (rect.w >= 1 && rect.h >= 1) {
+            void webview.captureRegion(rect).then((url) => {
+              if (gestureRef.current) setFreeze({ url, w: rect.w, h: rect.h });
+            }).catch(() => {
+            });
+          }
+        }
+      } else {
+        syncBounds(true);
+        requestAnimationFrame(
+          () => requestAnimationFrame(() => setFreeze(null))
+        );
+        arm();
+      }
+    });
     arm();
     return () => {
       ro.disconnect();
@@ -13505,9 +13531,10 @@ function BrowserViewImpl({
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("pointermove", onPointerMove, true);
       offLive.dispose();
+      offGesture.dispose();
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [syncBounds, app]);
+  }, [syncBounds, app, webview]);
   (0, import_react.useEffect)(() => {
     if (!label || !webview) return;
     const d1 = webview.on(label, "nav", (p) => {
@@ -13691,7 +13718,16 @@ function BrowserViewImpl({
         b.url
       ))
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bv-area", ref: areaRef })
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bv-area", ref: areaRef, children: freeze && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bv-freeze", "data-node": "freeze", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "img",
+      {
+        src: freeze.url,
+        width: freeze.w,
+        height: freeze.h,
+        alt: "",
+        draggable: false
+      }
+    ) }) })
   ] });
 }
 var BrowserView = (0, import_react.memo)(BrowserViewImpl);
@@ -13804,6 +13840,22 @@ var GLOBAL_CSS = `
   flex: 1 1 auto;
   min-height: 0;
   background: transparent;
+  position: relative;
+}
+/* freeze-frame: \uB514\uBC14\uC774\uB354 \uB4DC\uB798\uADF8 \uB3D9\uC548\uC758 \uC2DC\uAC01 \uC5F0\uC18D \uC2A4\uD0E0\uB4DC\uC778. \uCEE8\uD14C\uC774\uB108\uB294 \uBD88\uD22C\uBA85 \uBC30\uACBD \u2014
+   \uC2AC\uB86F\uC774 \uC790\uB77C\uBA70 \uC0C8\uB85C \uB178\uCD9C\uB418\uB294 \uC601\uC5ED(\uC544\uB798 stale \uB124\uC774\uD2F0\uBE0C)\uC744 \uAC00\uB9B0\uB2E4. \uC774\uBBF8\uC9C0\uB294 top-left
+   \uC575\uCEE4\xB7\uBB34\uC2A4\uCF00\uC77C(\uB9AC\uC0AC\uC774\uC988 \uC758\uBBF8\uB860\uACFC \uC77C\uCE58, \uBE14\uB7EC \uC5C6\uC74C). \uB4DC\uB798\uADF8 \uB05D \uC7AC\uD398\uC778\uD2B8 \uD6C4 \uC81C\uAC70. */
+.bv-freeze {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg, #1e1e1e);
+  z-index: 3;
+}
+.bv-freeze > img {
+  display: block;
+  user-select: none;
+  pointer-events: none;
 }
 `;
 function injectStyles() {

@@ -1,15 +1,15 @@
 {
   "spec": "soksak-spec-plugin@0.0.1",
-  "id": "soksak-plugin-browser",
+  "id": "soksak-plugin-browser-native",
   "name": {
-    "ko": "브라우저",
-    "en": "Browser"
+    "ko": "브라우저 (Webview)",
+    "en": "Browser (Webview)"
   },
   "version": "0.0.1",
-  "repo": "https://github.com/soksak-ai/soksak-plugin-browser.git",
+  "repo": "https://github.com/soksak-ai/soksak-plugin-browser-native.git",
   "description": {
-    "ko": "콘텐츠 뷰로 브라우저를 렌더 — 코어 네이티브 child webview(WKWebView) 를 직접 구동. URL 바·즐겨찾기·북마크·devtools 토글 내장.",
-    "en": "Renders the browser as a content view — drives the core native child webview (WKWebView) directly. Built-in URL bar, bookmarks, and devtools toggle."
+    "ko": "콘텐츠 뷰로 브라우저를 렌더 — 코어 네이티브 child webview(OS 웹뷰) 를 직접 구동. URL 바·즐겨찾기·북마크·devtools 토글 내장.",
+    "en": "Renders the browser as a content view — drives the core native child webview (OS webview) directly. Built-in URL bar, bookmarks, and devtools toggle."
   },
   "entry": "main.js",
   "permissions": [
@@ -67,23 +67,28 @@
       {
         "id": "content",
         "title": {
-          "ko": "브라우저",
-          "en": "Browser"
+          "ko": "브라우저 (Webview)",
+          "en": "Browser (Webview)"
         },
         "icon": "🌐",
         "placements": [
           "content"
         ],
         "defaultPlacement": "content",
-        "transparent": true
+        "transparent": true,
+        "nativeSurface": true
       }
     ],
     "programs": [
       {
         "id": "browser",
-        "title": {
+        "path": {
           "ko": "브라우저",
           "en": "Browser"
+        },
+        "title": {
+          "ko": "Webview",
+          "en": "Webview"
         },
         "kind": "view",
         "view": "content"
@@ -257,6 +262,13 @@
         "description": {
           "ko": "개발자 도구 버튼",
           "en": "Developer tools button"
+        }
+      },
+      {
+        "id": "freeze",
+        "description": {
+          "ko": "디바이더 드래그 중 시각 연속 스탠드인(freeze-frame) 오버레이",
+          "en": "Visual-continuity stand-in (freeze-frame) overlay during divider drag"
         }
       }
     ]

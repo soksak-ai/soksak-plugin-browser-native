@@ -79,6 +79,9 @@ export interface WebviewApi {
   list: (prefix?: string) => Promise<string[]>;
   /** webview 종료 + 정리. */
   close: (label: string) => Promise<void>;
+  /** 창 합성 캡처를 rect(CSS px, 창 좌표)로 crop 한 PNG data URL. 가림 상태에서도 캡처.
+   *  드래그 중 네이티브 표면의 시각 연속 스탠드인(freeze-frame — layout.resize-gesture 와 짝). */
+  captureRegion: (rect: { x: number; y: number; w: number; h: number }) => Promise<string>;
 }
 
 // app.data.kv — 즐겨찾기 저장에 쓰는 표면만.
