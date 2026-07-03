@@ -305,6 +305,8 @@ function BrowserViewImpl({
         const area = areaRef.current;
         if (area && webview && openedRef.current) {
           const r = area.getBoundingClientRect();
+          // parked(비활성 탭·숨김 컨텐츠) 슬롯은 화면 밖 — 캡처/스탠드인 불요(낭비 방지).
+          if (r.right < 0 || r.bottom < 0 || r.left > window.innerWidth || r.top > window.innerHeight) return;
           const rect = { x: r.left, y: r.top, w: r.width, h: r.height };
           if (rect.w >= 1 && rect.h >= 1) {
             void webview
