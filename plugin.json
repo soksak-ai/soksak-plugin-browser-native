@@ -1,15 +1,15 @@
 {
   "spec": "soksak-plugin-spec@1",
-  "id": "soksak-plugin-browser",
+  "id": "soksak-plugin-browser-native",
   "name": {
-    "ko": "브라우저",
-    "en": "Browser"
+    "ko": "브라우저 (Webview)",
+    "en": "Browser (Webview)"
   },
   "version": "2.0.0",
-  "repo": "https://github.com/soksak-ai/soksak-plugin-browser.git",
+  "repo": "https://github.com/soksak-ai/soksak-plugin-browser-native.git",
   "description": {
-    "ko": "콘텐츠 뷰로 브라우저를 렌더 — 코어 네이티브 child webview(WKWebView) 를 직접 구동. URL 바·즐겨찾기·북마크·devtools 토글 내장.",
-    "en": "Renders the browser as a content view — drives the core native child webview (WKWebView) directly. Built-in URL bar, bookmarks, and devtools toggle."
+    "ko": "콘텐츠 뷰로 브라우저를 렌더 — 코어 네이티브 child webview(OS 웹뷰) 를 직접 구동. URL 바·즐겨찾기·북마크·devtools 토글 내장.",
+    "en": "Renders the browser as a content view — drives the core native child webview (OS webview) directly. Built-in URL bar, bookmarks, and devtools toggle."
   },
   "entry": "main.js",
   "permissions": [
@@ -25,7 +25,10 @@
       "key": "homeUrl",
       "type": "string",
       "default": "about:blank",
-      "title": { "ko": "시작 URL", "en": "Start URL" },
+      "title": {
+        "ko": "시작 URL",
+        "en": "Start URL"
+      },
       "description": {
         "ko": "새 브라우저 탭이 처음 여는 주소.",
         "en": "Address a new browser tab opens to."
@@ -34,13 +37,25 @@
     {
       "key": "browserNewWindow",
       "type": "enum",
-      "enum": ["tab", "window"],
+      "enum": [
+        "tab",
+        "window"
+      ],
       "enumLabels": [
-        { "ko": "새 탭", "en": "New tab" },
-        { "ko": "새 창", "en": "New window" }
+        {
+          "ko": "새 탭",
+          "en": "New tab"
+        },
+        {
+          "ko": "새 창",
+          "en": "New window"
+        }
       ],
       "default": "tab",
-      "title": { "ko": "새 링크 열기", "en": "Open new links in" },
+      "title": {
+        "ko": "새 링크 열기",
+        "en": "Open new links in"
+      },
       "description": {
         "ko": "target=_blank / window.open 새 링크를 새 탭(앱 내 브라우저 뷰) 또는 독립 OS 창으로 연다.",
         "en": "Open target=_blank / window.open links as a new tab (in-app browser view) or an independent OS window."
@@ -52,21 +67,28 @@
       {
         "id": "content",
         "title": {
-          "ko": "브라우저",
-          "en": "Browser"
+          "ko": "브라우저 (Webview)",
+          "en": "Browser (Webview)"
         },
         "icon": "🌐",
-        "placements": ["content"],
+        "placements": [
+          "content"
+        ],
         "defaultPlacement": "content",
-        "transparent": true
+        "transparent": true,
+        "nativeSurface": true
       }
     ],
     "programs": [
       {
         "id": "browser",
-        "title": {
+        "path": {
           "ko": "브라우저",
           "en": "Browser"
+        },
+        "title": {
+          "ko": "Webview",
+          "en": "Webview"
         },
         "kind": "view",
         "view": "content"
@@ -240,6 +262,13 @@
         "description": {
           "ko": "개발자 도구 버튼",
           "en": "Developer tools button"
+        }
+      },
+      {
+        "id": "freeze",
+        "description": {
+          "ko": "디바이더 드래그 중 시각 연속 스탠드인(freeze-frame) 오버레이",
+          "en": "Visual-continuity stand-in (freeze-frame) overlay during divider drag"
         }
       }
     ]
