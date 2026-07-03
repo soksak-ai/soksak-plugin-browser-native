@@ -13508,6 +13508,7 @@ function BrowserViewImpl({
         const area = areaRef.current;
         if (area && webview && openedRef.current) {
           const r = area.getBoundingClientRect();
+          if (r.right < 0 || r.bottom < 0 || r.left > window.innerWidth || r.top > window.innerHeight) return;
           const rect = { x: r.left, y: r.top, w: r.width, h: r.height };
           if (rect.w >= 1 && rect.h >= 1) {
             void webview.captureRegion(rect).then((url) => {
