@@ -346,6 +346,10 @@ function BrowserViewImpl({
     const d1 = webview.on(label, "nav", (p) => {
       const url = p.url as string;
       setLocalUrl(url);
+      // 복원용 URL 영속(R-OWN — URL 은 플러그인 소유 상태): 이 뷰의 마지막 URL 을 kv 에.
+      // about:blank 는 저장하지 않는다(신선 뷰의 초기 nav 가 저장본을 덮는 것 방지).
+      if (ctx.viewId && app.data && url && url !== "about:blank")
+        void app.data.kv.set(`vurl:${ctx.viewId}`, url).catch(() => {});
     });
     const d2 = webview.on(label, "title", (p) => {
       const title = p.title as string;

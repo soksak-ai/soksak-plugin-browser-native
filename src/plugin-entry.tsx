@@ -40,17 +40,32 @@ export default {
       ctx.subscriptions.push(
         app.ui.registerView("content", {
           mount(container: HTMLElement, vctx: PluginViewContext) {
-            // 시작 URL 우선순위: 대기 URL(open 명령 / open-external 새 탭이 set) → homeUrl 설정 → blank.
+            // 시작 URL 우선순위: 대기 URL(open 명령 / open-external 새 탭이 set) →
+            // 저장 URL(복원 — 이 뷰가 마지막으로 보던 페이지, R-OWN) → homeUrl 설정 → blank.
             // takePendingUrl 은 1회 소비(다음 mount 가 잘못 이어받지 않게).
             const pending = takePendingUrl();
-            const homeUrl =
+            const fallback =
               pending ??
               (app.settings.get("homeUrl") as string | undefined) ??
               "about:blank";
-            mountInto(
-              container,
-              <BrowserView app={app} ctx={vctx} initialUrl={homeUrl} />,
-            );
+            const doMount = (url: string) => {
+              // kv 조회 대기 중 unmount 된 컨테이너에는 그리지 않는다(분리 잔재 가드).
+              if (!container.isConnected) return;
+              mountInto(
+                container,
+                <BrowserView app={app} ctx={vctx} initialUrl={url} />,
+              );
+            };
+            if (!pending && vctx.viewId && app.data) {
+              void app.data.kv
+                .get(`vurl:${vctx.viewId}`)
+                .then((v) =>
+                  doMount(typeof v === "string" && v ? v : fallback),
+                )
+                .catch(() => doMount(fallback));
+              return;
+            }
+            doMount(fallback);
           },
           unmount(container: HTMLElement) {
             unmountContainer(container);
