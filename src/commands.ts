@@ -121,6 +121,7 @@ export function registerCommands(ctx: PluginContext): void {
       description: "Browser plugin load/version check (E2E).",
       triggers: { ko: "브라우저 핑 적재확인 버전" },
       returns: "{ ok, version }",
+      message: (d) => `브라우저 플러그인 v${d.version} 이 적재되어 있습니다.`,
       handler: () => ({ ok: true, version: "2.0.0" }),
     }),
   );
@@ -134,9 +135,10 @@ export function registerCommands(ctx: PluginContext): void {
         ...targetParam,
       },
       returns: "{ ok }",
+      message: () => "페이지로 이동했습니다.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         await app.webview.navigate(entry.label, String(p.url ?? ""));
         return { ok: true };
       },
@@ -149,9 +151,10 @@ export function registerCommands(ctx: PluginContext): void {
       triggers: { ko: "브라우저 이전 뒤로" },
       params: { ...targetParam },
       returns: "{ ok }",
+      message: () => "이전 페이지로 돌아갔습니다.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         await app.webview.history(entry.label, -1);
         return { ok: true };
       },
@@ -164,9 +167,10 @@ export function registerCommands(ctx: PluginContext): void {
       triggers: { ko: "브라우저 다음 앞으로" },
       params: { ...targetParam },
       returns: "{ ok }",
+      message: () => "다음 페이지로 이동했습니다.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         await app.webview.history(entry.label, 1);
         return { ok: true };
       },
@@ -179,9 +183,10 @@ export function registerCommands(ctx: PluginContext): void {
       triggers: { ko: "브라우저 새로고침 리로드" },
       params: { ...targetParam },
       returns: "{ ok }",
+      message: () => "새로고침했습니다.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         // 코어에 standalone reload invoke 없음 → 현재 URL 재전송으로 대체.
         const url = entry.getUrl();
         if (url && url !== "about:blank") {
@@ -208,15 +213,16 @@ export function registerCommands(ctx: PluginContext): void {
         },
       },
       returns: "{ ok, viewId?, groupId? }",
+      message: (d) => (d.viewId ? `브라우저 뷰 ${d.viewId} 를 열었습니다.` : "브라우저 뷰를 열었습니다."),
       handler: async (p) => {
-        if (!app.commands) return { ok: false, error: "commands API 없음" };
+        if (!app.commands) return { ok: false, code: "INTERNAL", message: "commands API 없음" };
         const url = typeof p.url === "string" && p.url.length > 0 ? p.url : undefined;
         if (url) setPendingUrl(url);
         const out = await app.commands.execute("view.open", { program: "browser" });
         if (!out.ok) {
           // 실패 시 대기 URL 회수(다음 mount 가 잘못 소비하지 않게).
           if (url) takePendingUrl();
-          return { ok: false, error: String(out.error ?? "view.open 실패") };
+          return { ok: false, code: "VIEW_OPEN_FAILED", message: String(out.error ?? "view.open 실패") };
         }
         return { ok: true, viewId: out.viewId, groupId: out.groupId };
       },
@@ -231,9 +237,10 @@ export function registerCommands(ctx: PluginContext): void {
       triggers: { ko: "개발자 도구 인스펙터 devtools 열기 닫기" },
       params: { ...targetParam },
       returns: "{ ok, open? }",
+      message: (d) => (d.open ? "개발자 도구를 열었습니다." : "개발자 도구를 닫았습니다."),
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const open = await app.webview.devtools(entry.label);
         return { ok: true, open };
       },
@@ -248,8 +255,9 @@ export function registerCommands(ctx: PluginContext): void {
       triggers: { ko: "브라우저 webview 목록 라벨 고아 탐지" },
       params: {},
       returns: "{ ok, labels: string[] }",
+      message: (d) => `${(d.labels ?? []).length}개의 브라우저 뷰가 있습니다.`,
       handler: async () => {
-        if (!app.webview) return { ok: false, error: "webview API 없음" };
+        if (!app.webview) return { ok: false, code: "INTERNAL", message: "webview API 없음" };
         const labels = await app.webview.list("b-");
         return { ok: true, labels };
       },
@@ -271,14 +279,15 @@ export function registerCommands(ctx: PluginContext): void {
         ...targetParam,
       },
       returns: "{ ok, result? }",
+      message: () => "스크립트를 실행했습니다.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         try {
           const result = await evalJson(app.webview, entry.label, String(p.js ?? ""));
           return { ok: true, result };
         } catch (e) {
-          return { ok: false, error: evalErr(e) };
+          return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
       },
     }),
@@ -295,9 +304,10 @@ export function registerCommands(ctx: PluginContext): void {
         ...targetParam,
       },
       returns: "{ ok, text? }",
+      message: (d) => `텍스트 ${String(d.text ?? "").length}자를 읽었습니다.`,
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const max = typeof p.maxLength === "number" ? p.maxLength : 20000;
         const js = p.selector
           ? `const el = document.querySelector(${sel(String(p.selector))}); return el ? el.innerText.slice(0, ${max}) : null;`
@@ -306,7 +316,7 @@ export function registerCommands(ctx: PluginContext): void {
           const text = await evalJson(app.webview, entry.label, js);
           return { ok: true, text };
         } catch (e) {
-          return { ok: false, error: evalErr(e) };
+          return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
       },
     }),
@@ -323,9 +333,10 @@ export function registerCommands(ctx: PluginContext): void {
         ...targetParam,
       },
       returns: "{ ok, html? }",
+      message: (d) => `HTML ${String(d.html ?? "").length}자를 읽었습니다.`,
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const max = typeof p.maxLength === "number" ? p.maxLength : 50000;
         const js = p.selector
           ? `const el = document.querySelector(${sel(String(p.selector))}); return el ? el.outerHTML.slice(0, ${max}) : null;`
@@ -334,7 +345,7 @@ export function registerCommands(ctx: PluginContext): void {
           const html = await evalJson(app.webview, entry.label, js);
           return { ok: true, html };
         } catch (e) {
-          return { ok: false, error: evalErr(e) };
+          return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
       },
     }),
@@ -352,9 +363,10 @@ export function registerCommands(ctx: PluginContext): void {
         ...targetParam,
       },
       returns: "{ ok, count?, elements? }",
+      message: (d) => `${d.count ?? 0}개 요소를 찾았습니다.`,
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const limit = typeof p.limit === "number" ? p.limit : 20;
         const js = `
           const all = [...document.querySelectorAll(${sel(String(p.selector))})];
@@ -372,7 +384,7 @@ export function registerCommands(ctx: PluginContext): void {
           const r = (await evalJson(app.webview, entry.label, js)) as object;
           return { ok: true, ...r };
         } catch (e) {
-          return { ok: false, error: evalErr(e) };
+          return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
       },
     }),
@@ -388,15 +400,16 @@ export function registerCommands(ctx: PluginContext): void {
         ...targetParam,
       },
       returns: "{ ok, clicked? }",
+      message: (d) => (d.clicked ? "요소를 클릭했습니다." : "클릭할 요소를 찾지 못했습니다."),
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const js = `const el = document.querySelector(${sel(String(p.selector))}); if (!el) return { clicked: false, reason: "selector 매칭 없음" }; el.click(); return { clicked: true };`;
         try {
           const r = (await evalJson(app.webview, entry.label, js)) as object;
           return { ok: true, ...r };
         } catch (e) {
-          return { ok: false, error: evalErr(e) };
+          return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
       },
     }),
@@ -414,9 +427,10 @@ export function registerCommands(ctx: PluginContext): void {
         ...targetParam,
       },
       returns: "{ ok, filled? }",
+      message: (d) => (d.filled ? "입력란을 채웠습니다." : "채울 입력란을 찾지 못했습니다."),
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const js = `
           const el = document.querySelector(${sel(String(p.selector))});
           if (!el) return { filled: false, reason: "selector 매칭 없음" };
@@ -430,7 +444,7 @@ export function registerCommands(ctx: PluginContext): void {
           const r = (await evalJson(app.webview, entry.label, js)) as object;
           return { ok: true, ...r };
         } catch (e) {
-          return { ok: false, error: evalErr(e) };
+          return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
       },
     }),
@@ -446,9 +460,10 @@ export function registerCommands(ctx: PluginContext): void {
         ...targetParam,
       },
       returns: "{ ok, submitted? }",
+      message: (d) => (d.submitted ? "폼을 제출했습니다." : "제출할 폼을 찾지 못했습니다."),
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const js = `
           const el = document.querySelector(${sel(String(p.selector))});
           if (!el) return { submitted: false, reason: "selector 매칭 없음" };
@@ -460,7 +475,7 @@ export function registerCommands(ctx: PluginContext): void {
           const r = (await evalJson(app.webview, entry.label, js)) as object;
           return { ok: true, ...r };
         } catch (e) {
-          return { ok: false, error: evalErr(e) };
+          return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
       },
     }),
@@ -477,9 +492,10 @@ export function registerCommands(ctx: PluginContext): void {
         ...targetParam,
       },
       returns: "{ ok, found? }",
+      message: (d) => (d.found ? "요소가 나타났습니다." : "요소가 나타나지 않았습니다."),
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 5000;
         const js = `
           const find = () => document.querySelector(${sel(String(p.selector))});
@@ -495,7 +511,7 @@ export function registerCommands(ctx: PluginContext): void {
           const r = (await evalJson(app.webview, entry.label, js)) as object;
           return { ok: true, ...r };
         } catch (e) {
-          return { ok: false, error: evalErr(e) };
+          return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
       },
     }),
@@ -516,9 +532,10 @@ export function registerCommands(ctx: PluginContext): void {
         ...targetParam,
       },
       returns: "{ ok, urls? }",
+      message: (d) => `미디어 ${(d.urls ?? []).length}개를 찾았습니다.`,
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, error: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const webview = app.webview;
         const label = entry.label;
         const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 8000;
@@ -554,7 +571,7 @@ export function registerCommands(ctx: PluginContext): void {
             await delay(400);
           }
         } catch (e) {
-          return { ok: false, error: evalErr(e) };
+          return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
       },
     }),
@@ -573,10 +590,11 @@ export function registerCommands(ctx: PluginContext): void {
         timeoutMs: { type: "number", description: "Max wait for a media hit (ms)", required: false },
       },
       returns: "{ ok, urls? }",
+      message: (d) => `미디어 ${(d.urls ?? []).length}개를 추출했습니다.`,
       handler: async (p) => {
-        if (!app.webview) return { ok: false, error: "webview API 없음" };
+        if (!app.webview) return { ok: false, code: "INTERNAL", message: "webview API 없음" };
         const url = typeof p.url === "string" ? p.url : "";
-        if (!url) return { ok: false, error: "url 필요" };
+        if (!url) return { ok: false, code: "INVALID_INPUT", message: "url 필요" };
         const webview = app.webview;
         const timeoutMs = Math.max(1000, typeof p.timeoutMs === "number" ? p.timeoutMs : 15000);
         // 전역 유일 라벨(b- prefix 아님 → 브라우저 뷰 GC 가 건드리지 않는다). 충돌 회피용 난수.
@@ -618,7 +636,7 @@ export function registerCommands(ctx: PluginContext): void {
           }
           return { ok: true, urls: hits };
         } catch (e) {
-          return { ok: false, error: evalErr(e) };
+          return { ok: false, code: "INTERNAL", message: evalErr(e) };
         } finally {
           await webview.close(label).catch(() => {});
         }
