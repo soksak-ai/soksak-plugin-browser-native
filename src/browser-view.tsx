@@ -340,6 +340,19 @@ function BrowserViewImpl({
     };
   }, [syncBounds, app, webview]);
 
+  useEffect(() => {
+    if (!webview || !label) return;
+    // 콘텐츠 탭 전환 = 슬롯 파킹/언파킹(위치 이동, 크기 무변 → ResizeObserver 미발화). 코어가 그
+    // 렌더 커밋 직후(useLayoutEffect) layout.reflow 를 발화하므로, 여기서 최종 앵커 rect 로 bounds 를
+    // 1회 재스냅한다 — 활성 뷰=온스크린, 비활성 뷰=오프스크린(파킹). 폴링/추종 아님: 커밋 후 신호에
+    // 대한 단일 반응이라 클릭에 즉시 따라온다.
+    const off = app.events.on("layout.reflow", () => {
+      lastRectRef.current = "";
+      syncBounds(true);
+    });
+    return () => off.dispose();
+  }, [webview, label, app, syncBounds]);
+
   // webview nav 이벤트 → localUrl 동기화 + ctx.setTitle
   useEffect(() => {
     if (!label || !webview) return;
