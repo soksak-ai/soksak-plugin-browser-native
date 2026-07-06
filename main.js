@@ -13555,6 +13555,14 @@ function BrowserViewImpl({
     };
   }, [syncBounds, app, webview]);
   (0, import_react.useEffect)(() => {
+    if (!webview || !label) return;
+    const off = app.events.on("layout.reflow", () => {
+      lastRectRef.current = "";
+      syncBounds(true);
+    });
+    return () => off.dispose();
+  }, [webview, label, app, syncBounds]);
+  (0, import_react.useEffect)(() => {
     if (!label || !webview) return;
     const d1 = webview.on(label, "nav", (p) => {
       const url = p.url;
