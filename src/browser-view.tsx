@@ -8,6 +8,7 @@
 
 import { memo, useEffect, useRef, useState, useCallback } from "react";
 import type { PluginApi, PluginViewContext } from "./host";
+import { boundsCommitDecision, followShouldContinue } from "./bounds-follow";
 import { t } from "./i18n";
 import { registerLabel, unregisterLabel, setPendingUrl, takePendingUrl } from "./commands";
 
@@ -116,11 +117,10 @@ function BrowserViewImpl({
   const lastRectRef = useRef("");
   // 라이브 리사이즈(가장자리 드래그) 진행 여부 — 코어 app.events("window.live-resize") 게이트.
   const liveRef = useRef(false);
-  // 디바이더 드래그(layout.resize-gesture) 진행 여부 — freeze-frame 게이트. 드래그 동안
-  // 네이티브 bounds 커밋을 전면 유예하고(성능 원칙: settle 후 1회), 시각은 캡처 스탠드인이 잇는다.
+  // 디바이더 드래그(layout.resize-gesture) 진행 여부 — 드래그 내내 추종 루프를 살려두는 게이트.
+  // 드래그 중에도 bounds 를 매 프레임 커밋해 DOM 분할과 네이티브 webview 가 실시간으로 일치한다
+  // (freeze-frame 정지 사진은 폐기 — 실시간 미반영·잔상의 근원이었다).
   const gestureRef = useRef(false);
-  // freeze-frame 스탠드인 — 제스처 시작 시점 슬롯의 캡처(data URL + 논리 크기).
-  const [freeze, setFreeze] = useState<{ url: string; w: number; h: number } | null>(null);
   // 마지막으로 네이티브 bounds 를 보낸 시각(드래그 중 ~30Hz 스로틀 기준).
   const lastSentRef = useRef(0);
   // 최신 visible 값 — open 완료 시점에 재적용(생성 경쟁 보정).
@@ -175,9 +175,6 @@ function BrowserViewImpl({
   // 정확 스냅(스로틀 무시).
   const syncBounds = useCallback(
     (force = false): "sent" | "pending" | "same" => {
-      // 디바이더 드래그 중엔 측정(reflow)도 전송(IPC)도 하지 않는다 — freeze-frame 이
-      // 시각을 잇고, 끝(force)에 최종 rect 로 1회 스냅한다(성능 원칙 5).
-      if (gestureRef.current && !force) return "same";
       const el = areaRef.current;
       if (!el || !openedRef.current || !webview || !label) return "same";
       const r = el.getBoundingClientRect();
@@ -187,11 +184,17 @@ function BrowserViewImpl({
       const w = Math.max(1, Math.floor(r.right) - x);
       const h = Math.max(1, Math.floor(r.bottom) - y);
       const key = `${x},${y},${w},${h}`;
-      if (key === lastRectRef.current) return "same";
-      if (!force && liveRef.current) {
-        // 변화는 있으나 직전 전송 후 스로틀 간격 전 → 보류(rect/시각은 다음 프레임에 반영).
-        if (performance.now() - lastSentRef.current < LIVE_THROTTLE_MS) return "pending";
-      }
+      // 커밋 판정은 순수 정책(bounds-follow.ts)이 소유 — gesture 는 유예를 만들지 않는다(실시간 계약).
+      const decision = boundsCommitDecision({
+        force,
+        live: liveRef.current,
+        gesture: gestureRef.current,
+        sameRect: key === lastRectRef.current,
+        msSinceLast: performance.now() - lastSentRef.current,
+        throttleMs: LIVE_THROTTLE_MS,
+      });
+      if (decision === "skip") return "same";
+      if (decision === "pending") return "pending";
       lastRectRef.current = key;
       lastSentRef.current = performance.now();
       void webview.bounds(label, x, y, w, h);
@@ -261,8 +264,15 @@ function BrowserViewImpl({
       rafId = 0;
       const s = syncBounds();
       stable = s === "same" ? stable + 1 : 0;
-      // 드래그 중이거나 아직 안정 전이면 계속 추종, 아니면 멈춘다(idle 0).
-      if (liveRef.current || stable < STABLE_STOP_FRAMES) {
+      // 드래그(창 리사이즈·디바이더) 중이거나 아직 안정 전이면 계속 추종, 아니면 멈춘다(idle 0).
+      if (
+        followShouldContinue({
+          live: liveRef.current,
+          gesture: gestureRef.current,
+          stableFrames: stable,
+          stopAfter: STABLE_STOP_FRAMES,
+        })
+      ) {
         rafId = requestAnimationFrame(tick);
       }
     };
@@ -293,38 +303,17 @@ function BrowserViewImpl({
       arm();
     });
 
-    // 디바이더 드래그(freeze-frame) — layout.resize-gesture(창-로컬).
-    // 시작: 현재 슬롯을 캡처해 스탠드인으로 덮고, 드래그 동안 bounds 커밋을 전면 유예.
-    //   캡처는 비동기 — 도착 전엔 아래 네이티브가 그대로 보이므로 공백 없음. 캡처 실패/드래그
-    //   조기 종료면 스탠드인 없이 기존 동작(폴백).
-    // 끝: 최종 rect 1회 스냅 → 네이티브 재페인트 여유(rAF×2) 후 스탠드인 제거.
+    // 디바이더 드래그 — layout.resize-gesture(창-로컬). 드래그 내내 추종 루프를 살려 매 프레임
+    // 앵커 rect 로 bounds 를 커밋한다: DOM 분할은 이미 매 프레임 라이브 커밋이므로 네이티브가
+    // 같은 리듬으로 따라와야 실시간 리사이즈다(최대 1프레임 지연). 변화 없는 프레임은 same-rect
+    // 스킵이라 IPC 0. 끝: 최종 레이아웃 커밋 후 도착하므로 정확한 최종 rect 로 1회 강제 스냅.
+    // (freeze-frame 정지 사진은 폐기 — 드래그 중 콘텐츠가 박제되고, 옛 크기 스탠드인이 빈 슬롯을
+    //  드러내는 잔상의 근원이었다.)
     const offGesture = app.events.on("layout.resize-gesture", (p) => {
       const active = !!(p as { active?: boolean }).active;
       gestureRef.current = active;
-      if (active) {
-        const area = areaRef.current;
-        if (area && webview && openedRef.current) {
-          const r = area.getBoundingClientRect();
-          // parked(비활성 탭·숨김 컨텐츠) 슬롯은 화면 밖 — 캡처/스탠드인 불요(낭비 방지).
-          if (r.right < 0 || r.bottom < 0 || r.left > window.innerWidth || r.top > window.innerHeight) return;
-          const rect = { x: r.left, y: r.top, w: r.width, h: r.height };
-          if (rect.w >= 1 && rect.h >= 1) {
-            void webview
-              .captureRegion(rect)
-              .then((url) => {
-                // 드래그가 이미 끝났으면 버린다(늦은 캡처가 화면을 덮지 않게).
-                if (gestureRef.current) setFreeze({ url, w: rect.w, h: rect.h });
-              })
-              .catch(() => {});
-          }
-        }
-      } else {
-        syncBounds(true);
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => setFreeze(null)),
-        );
-        arm(); // 잔여 레이아웃 정착 보정.
-      }
+      if (!active) syncBounds(true);
+      arm();
     });
 
     arm(); // 초기 정착 1회.
@@ -544,19 +533,7 @@ function BrowserViewImpl({
         </div>
       )}
       {/* child webview 가 이 영역 위에 정렬된다(레이어 원칙: DOM 아래 네이티브). */}
-      <div className="bv-area" ref={areaRef}>
-        {freeze && (
-          <div className="bv-freeze" data-node="freeze">
-            <img
-              src={freeze.url}
-              width={freeze.w}
-              height={freeze.h}
-              alt=""
-              draggable={false}
-            />
-          </div>
-        )}
-      </div>
+      <div className="bv-area" ref={areaRef} />
     </div>
   );
 }

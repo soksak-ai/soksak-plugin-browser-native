@@ -110,21 +110,6 @@ export const GLOBAL_CSS = `
   background: transparent;
   position: relative;
 }
-/* freeze-frame: 디바이더 드래그 동안의 시각 연속 스탠드인. 컨테이너는 불투명 배경 —
-   슬롯이 자라며 새로 노출되는 영역(아래 stale 네이티브)을 가린다. 이미지는 top-left
-   앵커·무스케일(리사이즈 의미론과 일치, 블러 없음). 드래그 끝 재페인트 후 제거. */
-.bv-freeze {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background: var(--bg, #1e1e1e);
-  z-index: 3;
-}
-.bv-freeze > img {
-  display: block;
-  user-select: none;
-  pointer-events: none;
-}
 `;
 
 export function injectStyles(): void {
