@@ -12810,7 +12810,7 @@ var activeViews = /* @__PURE__ */ new Map();
 var lastMountedViewId = null;
 var activeViewId = null;
 function registerLabel(viewId, label, getUrl) {
-  activeViews.set(viewId, { label, getUrl });
+  activeViews.set(viewId, { viewId, label, getUrl });
   lastMountedViewId = viewId;
   activeViewId = viewId;
 }
@@ -12882,13 +12882,17 @@ function registerCommands(ctx) {
         url: { type: "string", description: "URL to navigate to", required: true },
         ...targetParam
       },
-      returns: "{ ok }",
+      returns: "{ ok, viewId? }",
       message: () => "\uD398\uC774\uC9C0\uB85C \uC774\uB3D9\uD588\uC2B5\uB2C8\uB2E4.",
+      hint: (d) => d.ok ? [
+        { cmd: "dom.text", why: "\uC774\uB3D9\uD55C \uD398\uC774\uC9C0\uC758 \uD14D\uC2A4\uD2B8\uB97C \uC77D\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4." },
+        { cmd: "dom.query", why: "\uD398\uC774\uC9C0 \uAD6C\uC870(\uC694\uC18C)\uB97C \uD30C\uC545\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4." }
+      ] : [],
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         await app.webview.navigate(entry.label, String(p.url ?? ""));
-        return { ok: true };
+        return { ok: true, viewId: entry.viewId };
       }
     })
   );
@@ -12897,13 +12901,13 @@ function registerCommands(ctx) {
       description: "Go back in the active browser view history.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC774\uC804 \uB4A4\uB85C" },
       params: { ...targetParam },
-      returns: "{ ok }",
+      returns: "{ ok, viewId? }",
       message: () => "\uC774\uC804 \uD398\uC774\uC9C0\uB85C \uB3CC\uC544\uAC14\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         await app.webview.history(entry.label, -1);
-        return { ok: true };
+        return { ok: true, viewId: entry.viewId };
       }
     })
   );
@@ -12912,13 +12916,13 @@ function registerCommands(ctx) {
       description: "Go forward in the active browser view history.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uB2E4\uC74C \uC55E\uC73C\uB85C" },
       params: { ...targetParam },
-      returns: "{ ok }",
+      returns: "{ ok, viewId? }",
       message: () => "\uB2E4\uC74C \uD398\uC774\uC9C0\uB85C \uC774\uB3D9\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         await app.webview.history(entry.label, 1);
-        return { ok: true };
+        return { ok: true, viewId: entry.viewId };
       }
     })
   );
@@ -12927,7 +12931,7 @@ function registerCommands(ctx) {
       description: "Reload the active browser view.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC0C8\uB85C\uACE0\uCE68 \uB9AC\uB85C\uB4DC" },
       params: { ...targetParam },
-      returns: "{ ok }",
+      returns: "{ ok, viewId? }",
       message: () => "\uC0C8\uB85C\uACE0\uCE68\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
@@ -12936,7 +12940,7 @@ function registerCommands(ctx) {
         if (url && url !== "about:blank") {
           await app.webview.navigate(entry.label, url);
         }
-        return { ok: true };
+        return { ok: true, viewId: entry.viewId };
       }
     })
   );
@@ -12951,8 +12955,12 @@ function registerCommands(ctx) {
           required: false
         }
       },
-      returns: "{ ok, viewId?, groupId? }",
+      returns: "{ ok, viewId?, panelId? }",
       message: (d) => d.viewId ? `\uBE0C\uB77C\uC6B0\uC800 \uBDF0 ${d.viewId} \uB97C \uC5F4\uC5C8\uC2B5\uB2C8\uB2E4.` : "\uBE0C\uB77C\uC6B0\uC800 \uBDF0\uB97C \uC5F4\uC5C8\uC2B5\uB2C8\uB2E4.",
+      hint: (d) => d.ok && d.viewId ? [
+        { cmd: "navigate", why: "\uC774 \uBE0C\uB77C\uC6B0\uC800 \uBDF0\uC5D0\uC11C \uB2E4\uB978 URL \uB85C \uC774\uB3D9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4." },
+        { cmd: "dom.text", why: "\uC5F4\uB9B0 \uD398\uC774\uC9C0\uC758 \uD14D\uC2A4\uD2B8\uB97C \uC77D\uC744 \uC218 \uC788\uC2B5\uB2C8\uB2E4." }
+      ] : [],
       handler: async (p) => {
         if (!app.commands) return { ok: false, code: "INTERNAL", message: "commands API \uC5C6\uC74C" };
         const url = typeof p.url === "string" && p.url.length > 0 ? p.url : void 0;
@@ -12962,7 +12970,7 @@ function registerCommands(ctx) {
           if (url) takePendingUrl();
           return { ok: false, code: "VIEW_OPEN_FAILED", message: String(out.error ?? "view.open \uC2E4\uD328") };
         }
-        return { ok: true, viewId: out.viewId, groupId: out.groupId };
+        return { ok: true, viewId: out.viewId, panelId: out.panelId };
       }
     })
   );
@@ -12971,13 +12979,13 @@ function registerCommands(ctx) {
       description: "Toggle the browser Web Inspector (WKWebView has no CDP \u2014 opens the OS inspector in a separate window).",
       triggers: { ko: "\uAC1C\uBC1C\uC790 \uB3C4\uAD6C \uC778\uC2A4\uD399\uD130 devtools \uC5F4\uAE30 \uB2EB\uAE30" },
       params: { ...targetParam },
-      returns: "{ ok, open? }",
+      returns: "{ ok, open?, viewId? }",
       message: (d) => d.open ? "\uAC1C\uBC1C\uC790 \uB3C4\uAD6C\uB97C \uC5F4\uC5C8\uC2B5\uB2C8\uB2E4." : "\uAC1C\uBC1C\uC790 \uB3C4\uAD6C\uB97C \uB2EB\uC558\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const open = await app.webview.devtools(entry.label);
-        return { ok: true, open };
+        return { ok: true, open, viewId: entry.viewId };
       }
     })
   );
@@ -13007,14 +13015,14 @@ function registerCommands(ctx) {
         },
         ...targetParam
       },
-      returns: "{ ok, result? }",
+      returns: "{ ok, result?, viewId? }",
       message: () => "\uC2A4\uD06C\uB9BD\uD2B8\uB97C \uC2E4\uD589\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         try {
           const result = await evalJson(app.webview, entry.label, String(p.js ?? ""));
-          return { ok: true, result };
+          return { ok: true, result, viewId: entry.viewId };
         } catch (e) {
           return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
@@ -13030,7 +13038,7 @@ function registerCommands(ctx) {
         maxLength: { type: "number", description: "Max character length", required: false },
         ...targetParam
       },
-      returns: "{ ok, text? }",
+      returns: "{ ok, text?, viewId? }",
       message: (d) => `\uD14D\uC2A4\uD2B8 ${String(d.text ?? "").length}\uC790\uB97C \uC77D\uC5C8\uC2B5\uB2C8\uB2E4.`,
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
@@ -13039,7 +13047,7 @@ function registerCommands(ctx) {
         const js = p.selector ? `const el = document.querySelector(${sel(String(p.selector))}); return el ? el.innerText.slice(0, ${max}) : null;` : `return document.body.innerText.slice(0, ${max});`;
         try {
           const text = await evalJson(app.webview, entry.label, js);
-          return { ok: true, text };
+          return { ok: true, text, viewId: entry.viewId };
         } catch (e) {
           return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
@@ -13055,7 +13063,7 @@ function registerCommands(ctx) {
         maxLength: { type: "number", description: "Max character length", required: false },
         ...targetParam
       },
-      returns: "{ ok, html? }",
+      returns: "{ ok, html?, viewId? }",
       message: (d) => `HTML ${String(d.html ?? "").length}\uC790\uB97C \uC77D\uC5C8\uC2B5\uB2C8\uB2E4.`,
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
@@ -13064,7 +13072,7 @@ function registerCommands(ctx) {
         const js = p.selector ? `const el = document.querySelector(${sel(String(p.selector))}); return el ? el.outerHTML.slice(0, ${max}) : null;` : `return document.documentElement.outerHTML.slice(0, ${max});`;
         try {
           const html = await evalJson(app.webview, entry.label, js);
-          return { ok: true, html };
+          return { ok: true, html, viewId: entry.viewId };
         } catch (e) {
           return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
@@ -13080,8 +13088,12 @@ function registerCommands(ctx) {
         limit: { type: "number", description: "Max element count", required: false },
         ...targetParam
       },
-      returns: "{ ok, count?, elements? }",
+      returns: "{ ok, count?, elements?, viewId? }",
       message: (d) => `${d.count ?? 0}\uAC1C \uC694\uC18C\uB97C \uCC3E\uC558\uC2B5\uB2C8\uB2E4.`,
+      hint: (d) => d.ok && (d.count ?? 0) > 0 ? [
+        { cmd: "dom.click", why: "\uCC3E\uC740 \uC694\uC18C\uB97C \uD074\uB9AD\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4." },
+        { cmd: "dom.fill", why: "\uCC3E\uC740 \uC785\uB825\uB780\uC744 \uCC44\uC6B8 \uC218 \uC788\uC2B5\uB2C8\uB2E4." }
+      ] : [],
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
@@ -13100,7 +13112,7 @@ function registerCommands(ctx) {
           })) };`;
         try {
           const r = await evalJson(app.webview, entry.label, js);
-          return { ok: true, ...r };
+          return { ok: true, ...r, viewId: entry.viewId };
         } catch (e) {
           return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
@@ -13115,7 +13127,7 @@ function registerCommands(ctx) {
         selector: { type: "string", description: "CSS selector", required: true },
         ...targetParam
       },
-      returns: "{ ok, clicked? }",
+      returns: "{ ok, clicked?, viewId? }",
       message: (d) => d.clicked ? "\uC694\uC18C\uB97C \uD074\uB9AD\uD588\uC2B5\uB2C8\uB2E4." : "\uD074\uB9AD\uD560 \uC694\uC18C\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
@@ -13123,7 +13135,7 @@ function registerCommands(ctx) {
         const js = `const el = document.querySelector(${sel(String(p.selector))}); if (!el) return { clicked: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" }; el.click(); return { clicked: true };`;
         try {
           const r = await evalJson(app.webview, entry.label, js);
-          return { ok: true, ...r };
+          return { ok: true, ...r, viewId: entry.viewId };
         } catch (e) {
           return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
@@ -13139,7 +13151,7 @@ function registerCommands(ctx) {
         text: { type: "string", description: "Value to enter", required: true },
         ...targetParam
       },
-      returns: "{ ok, filled? }",
+      returns: "{ ok, filled?, viewId? }",
       message: (d) => d.filled ? "\uC785\uB825\uB780\uC744 \uCC44\uC6E0\uC2B5\uB2C8\uB2E4." : "\uCC44\uC6B8 \uC785\uB825\uB780\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
@@ -13155,7 +13167,7 @@ function registerCommands(ctx) {
           return { filled: true };`;
         try {
           const r = await evalJson(app.webview, entry.label, js);
-          return { ok: true, ...r };
+          return { ok: true, ...r, viewId: entry.viewId };
         } catch (e) {
           return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
@@ -13170,7 +13182,7 @@ function registerCommands(ctx) {
         selector: { type: "string", description: "CSS selector", required: true },
         ...targetParam
       },
-      returns: "{ ok, submitted? }",
+      returns: "{ ok, submitted?, viewId? }",
       message: (d) => d.submitted ? "\uD3FC\uC744 \uC81C\uCD9C\uD588\uC2B5\uB2C8\uB2E4." : "\uC81C\uCD9C\uD560 \uD3FC\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
@@ -13184,7 +13196,7 @@ function registerCommands(ctx) {
           return { submitted: true };`;
         try {
           const r = await evalJson(app.webview, entry.label, js);
-          return { ok: true, ...r };
+          return { ok: true, ...r, viewId: entry.viewId };
         } catch (e) {
           return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
@@ -13200,7 +13212,7 @@ function registerCommands(ctx) {
         timeoutMs: { type: "number", description: "Max wait time (ms)", required: false },
         ...targetParam
       },
-      returns: "{ ok, found? }",
+      returns: "{ ok, found?, viewId? }",
       message: (d) => d.found ? "\uC694\uC18C\uAC00 \uB098\uD0C0\uB0AC\uC2B5\uB2C8\uB2E4." : "\uC694\uC18C\uAC00 \uB098\uD0C0\uB098\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
@@ -13218,7 +13230,7 @@ function registerCommands(ctx) {
           });`;
         try {
           const r = await evalJson(app.webview, entry.label, js);
-          return { ok: true, ...r };
+          return { ok: true, ...r, viewId: entry.viewId };
         } catch (e) {
           return { ok: false, code: "INTERNAL", message: evalErr(e) };
         }
@@ -13235,13 +13247,14 @@ function registerCommands(ctx) {
         pattern: { type: "string", description: "Only return URLs matching this regex (e.g. m3u8)", required: false },
         ...targetParam
       },
-      returns: "{ ok, urls? }",
+      returns: "{ ok, urls?, viewId? }",
       message: (d) => `\uBBF8\uB514\uC5B4 ${(d.urls ?? []).length}\uAC1C\uB97C \uCC3E\uC558\uC2B5\uB2C8\uB2E4.`,
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const webview = app.webview;
         const label = entry.label;
+        const viewId = entry.viewId;
         const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 8e3;
         const autoplay = p.autoplay !== false;
         const re = p.pattern ? new RegExp(String(p.pattern), "i") : null;
@@ -13262,7 +13275,7 @@ function registerCommands(ctx) {
               hits = [];
             }
             const urls = re ? hits.filter((h) => re.test(h.url)) : hits;
-            if (urls.length > 0) return { ok: true, urls };
+            if (urls.length > 0) return { ok: true, urls, viewId };
             if (autoplay && !triggered) {
               triggered = true;
               await evalJson(
@@ -13271,7 +13284,7 @@ function registerCommands(ctx) {
                 "try { var v = document.querySelector('video'); if (v) { v.muted = true; v.play && v.play().catch(function(){}); } } catch(e){} return null;"
               );
             }
-            if (Date.now() >= deadline) return { ok: true, urls: [] };
+            if (Date.now() >= deadline) return { ok: true, urls: [], viewId };
             await delay(400);
           }
         } catch (e) {

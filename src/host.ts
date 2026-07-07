@@ -29,12 +29,19 @@ export interface ParamSpec {
   required?: boolean;
 }
 
+export interface CommandHint {
+  cmd: string;
+  why: string;
+}
+
 export interface PluginCommandSpec {
   description: string;
   triggers?: Record<string, string>;
   params?: Record<string, ParamSpec>;
   returns?: string;
   message?: (data: any) => string;
+  /** Up to 3 suggested next commands, worded suggestively ("...할 수 있습니다"). */
+  hint?: (data: any, ctx: PluginContext) => CommandHint[];
   handler: (params: Record<string, unknown>) => Promise<object> | object;
 }
 
