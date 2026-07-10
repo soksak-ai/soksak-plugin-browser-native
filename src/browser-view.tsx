@@ -342,6 +342,14 @@ function BrowserViewImpl({
     const d1 = webview.on(label, "nav", (p) => {
       const url = p.url as string;
       setLocalUrl(url);
+      // title 폴백 — 탭 제목은 콘텐츠 사실이다: 페이지가 title 이벤트를 안 내는 경우
+      // (about:blank·일부 data URL)에도 이전 페이지의 stale 제목이 남지 않게, nav 시점에
+      // URL(host 우선)로 먼저 보고한다. 진짜 title 이벤트가 오면 그것이 덮는다.
+      if (url) {
+        let t = url;
+        try { t = new URL(url).host || url; } catch { /* data:/about: 등 — URL 그대로 */ }
+        ctx.setTitle(t);
+      }
       // 복원용 URL 영속(B3 restore.state) — 뷰 레코드에 실려 뷰와 수명을 같이한다.
       // about:blank 는 저장하지 않는다(신선 뷰의 초기 nav 가 저장본을 덮는 것 방지).
       if (ctx.viewId && url && url !== "about:blank")
