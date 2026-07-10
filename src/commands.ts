@@ -3,7 +3,7 @@
 //   - 코어 evalInBrowser 래퍼(async IIFE + JSON.stringify)를 evalJson 으로 재현(app.webview.eval
 //     은 raw 패스스루라 호출측이 직접 감싸야 한다 — browser_eval 은 문자열 반환을 요구).
 //   - dom.* JS 스니펫·param 이름·반환 형태를 코어와 동일하게 유지(AI/E2E 행동 무변).
-import { normalizeUrl } from "soksak-kit-browser-chassis";
+import { normalizeUrl } from "soksak-kit-browser-common";
 import type { PluginContext, WebviewApi } from "./host";
 
 // 새 브라우저 탭을 열 때 mount 가 homeUrl 대신 소비할 "대기 URL".

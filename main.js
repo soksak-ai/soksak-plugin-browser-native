@@ -12757,7 +12757,7 @@ var import_client = __toESM(require_client(), 1);
 var import_react = __toESM(require_react(), 1);
 var import_react_dom = __toESM(require_react_dom(), 1);
 
-// ../../kits/soksak-kit-browser-chassis/src/url.ts
+// ../../kits/soksak-kit-browser-common/src/url.ts
 function normalizeUrl(raw) {
   const s = raw.trim();
   if (!s) return "about:blank";
@@ -12766,7 +12766,7 @@ function normalizeUrl(raw) {
   return `https://www.google.com/search?q=${encodeURIComponent(s)}`;
 }
 
-// ../../kits/soksak-kit-browser-chassis/src/nav-state.ts
+// ../../kits/soksak-kit-browser-common/src/nav-state.ts
 var initialNavState = { loading: false, canBack: false, canForward: false };
 function renderNavState(s) {
   return {
@@ -12779,7 +12779,7 @@ function renderNavState(s) {
   };
 }
 
-// ../../kits/soksak-kit-browser-chassis/src/toolbar.ts
+// ../../kits/soksak-kit-browser-common/src/toolbar.ts
 function btn(node, label, title) {
   const b = document.createElement("button");
   b.type = "button";
