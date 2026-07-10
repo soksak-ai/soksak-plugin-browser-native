@@ -3,6 +3,7 @@
 //   - 코어 evalInBrowser 래퍼(async IIFE + JSON.stringify)를 evalJson 으로 재현(app.webview.eval
 //     은 raw 패스스루라 호출측이 직접 감싸야 한다 — browser_eval 은 문자열 반환을 요구).
 //   - dom.* JS 스니펫·param 이름·반환 형태를 코어와 동일하게 유지(AI/E2E 행동 무변).
+import { normalizeUrl } from "soksak-browser-kit";
 import type { PluginContext, WebviewApi } from "./host";
 
 // 새 브라우저 탭을 열 때 mount 가 homeUrl 대신 소비할 "대기 URL".
@@ -200,6 +201,23 @@ export function registerCommands(ctx: PluginContext): void {
           await app.webview.navigate(entry.label, url);
         }
         return { ok: true, viewId: entry.viewId };
+      },
+    }),
+  );
+
+  sub(
+    app.commands.register("home", {
+      description: "Navigate the active (or specified) browser view to the configured home URL.",
+      triggers: { ko: "홈 home" },
+      params: { ...targetParam },
+      returns: "{ ok, viewId?, url? }",
+      message: () => "홈으로 이동했습니다.",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        const url = normalizeUrl(String(app.settings.get("homeUrl") ?? "about:blank"));
+        await app.webview.navigate(entry.label, url);
+        return { ok: true, viewId: entry.viewId, url };
       },
     }),
   );

@@ -12769,6 +12769,7 @@ function boundsCommitDecision(i) {
 // src/i18n.ts
 var EN = {
   back: "Back",
+  home: "Home",
   forward: "Forward",
   reload: "Reload",
   urlPlaceholder: "Enter URL or search",
@@ -12781,6 +12782,7 @@ var EN = {
 };
 var KO = {
   back: "\uC774\uC804",
+  home: "\uD648",
   forward: "\uC774\uD6C4",
   reload: "\uC0C8\uB85C\uACE0\uCE68",
   urlPlaceholder: "URL \uB610\uB294 \uAC80\uC0C9\uC5B4 \uC785\uB825",
@@ -12794,6 +12796,15 @@ var KO = {
 function t(key, lang) {
   const dict = lang === "ko" ? KO : EN;
   return dict[key] ?? EN[key] ?? key;
+}
+
+// ../../../ai/cli/soksak-browser-kit/src/url.ts
+function normalizeUrl(raw) {
+  const s = raw.trim();
+  if (!s) return "about:blank";
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) || s.startsWith("about:") || s.startsWith("data:")) return s;
+  if (/^[^\s.]+\.[^\s]+/.test(s)) return `https://${s}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(s)}`;
 }
 
 // src/commands.ts
@@ -12941,6 +12952,22 @@ function registerCommands(ctx) {
           await app.webview.navigate(entry.label, url);
         }
         return { ok: true, viewId: entry.viewId };
+      }
+    })
+  );
+  sub(
+    app.commands.register("home", {
+      description: "Navigate the active (or specified) browser view to the configured home URL.",
+      triggers: { ko: "\uD648 home" },
+      params: { ...targetParam },
+      returns: "{ ok, viewId?, url? }",
+      message: () => "\uD648\uC73C\uB85C \uC774\uB3D9\uD588\uC2B5\uB2C8\uB2E4.",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        const url = normalizeUrl(String(app.settings.get("homeUrl") ?? "about:blank"));
+        await app.webview.navigate(entry.label, url);
+        return { ok: true, viewId: entry.viewId, url };
       }
     })
   );
@@ -13367,7 +13394,7 @@ function isComposingEnter(e) {
 }
 var LIVE_THROTTLE_MS = 32;
 var STABLE_STOP_FRAMES = 4;
-function normalizeUrl(input) {
+function normalizeUrl2(input) {
   const s = input.trim();
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(s)) return s;
   if (!s.includes(" ") && s.includes(".")) return `https://${s}`;
@@ -13622,7 +13649,7 @@ function BrowserViewImpl({
     return () => d.dispose();
   }, [label, webview, openExternal]);
   const navigate = (0, import_react.useCallback)((raw) => {
-    const u = normalizeUrl(raw);
+    const u = normalizeUrl2(raw);
     setLocalUrl(u);
     if (label && webview) {
       void webview.navigate(label, u).catch(() => {
@@ -13680,6 +13707,17 @@ function BrowserViewImpl({
           "data-node": "reload",
           onClick: () => void webview.navigate(label, localUrl),
           children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(IconReload, {})
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          type: "button",
+          className: "bv-btn",
+          title: t("home", lang),
+          "data-node": "home",
+          onClick: () => navigate(String(app.settings.get("homeUrl") ?? "about:blank")),
+          children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": true, children: "\u2302" })
         }
       ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(

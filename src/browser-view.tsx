@@ -460,6 +460,15 @@ function BrowserViewImpl({
         >
           <IconReload />
         </button>
+        <button
+          type="button"
+          className="bv-btn"
+          title={t("home", lang)}
+          data-node="home"
+          onClick={() => navigate(String(app.settings.get("homeUrl") ?? "about:blank"))}
+        >
+          <span aria-hidden>⌂</span>
+        </button>
         <input
           className="bv-url"
           value={input}
