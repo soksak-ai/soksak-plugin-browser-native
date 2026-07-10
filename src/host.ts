@@ -18,6 +18,8 @@ export interface PluginViewContext {
   setBadge: (badge: number | "dot" | null) => void;
   setStatus: (status: { code: string; message?: string } | null) => void;
   setTitle: (title: string) => void;
+  // 탭 아이콘(콘텐츠 사실 — 파비콘 URL). 빈 값 = 해제(매니페스트 아이콘 폴백).
+  setIcon?: (icon: string) => void;
   // 플러그인 관찰 상태 보고(B3) — 뷰 레코드 영속(뷰와 수명 동기). kv 에 viewId 키 영속 금지.
   setRestoreState?: (state: unknown) => void;
 }
