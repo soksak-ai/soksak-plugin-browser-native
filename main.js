@@ -12934,6 +12934,11 @@ function boundsCommitDecision(i) {
   return "send";
 }
 
+// src/view-status.ts
+function loadStatus(loading) {
+  return loading ? { code: "busy", messageKey: "statusLoading" } : { code: "ready", messageKey: "statusReady" };
+}
+
 // src/i18n.ts
 var EN = {
   back: "Back",
@@ -12946,7 +12951,9 @@ var EN = {
   addBookmark: "Add bookmark",
   removeBookmark: "Remove bookmark",
   noBookmarks: "No bookmarks",
-  inspect: "Inspect (devtools)"
+  inspect: "Inspect (devtools)",
+  statusLoading: "Loading\u2026",
+  statusReady: "Ready"
 };
 var KO = {
   back: "\uC774\uC804",
@@ -12959,7 +12966,9 @@ var KO = {
   addBookmark: "\uC990\uACA8\uCC3E\uAE30 \uCD94\uAC00",
   removeBookmark: "\uC990\uACA8\uCC3E\uAE30 \uC81C\uAC70",
   noBookmarks: "\uC990\uACA8\uCC3E\uAE30\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4",
-  inspect: "\uC778\uC2A4\uD399\uD2B8(devtools)"
+  inspect: "\uC778\uC2A4\uD399\uD2B8(devtools)",
+  statusLoading: "\uB85C\uB529 \uC911\u2026",
+  statusReady: "\uC900\uBE44\uB428"
 };
 function t(key, lang) {
   const dict = lang === "ko" ? KO : EN;
@@ -13540,6 +13549,8 @@ function BrowserViewImpl({
   initialUrl
 }) {
   const lang = app.locale();
+  const langRef = (0, import_react.useRef)(lang);
+  langRef.current = lang;
   const webview = app.webview;
   const label = ctx.viewId && webview ? webview.label(ctx.viewId) : null;
   const areaRef = (0, import_react.useRef)(null);
@@ -13784,6 +13795,17 @@ function BrowserViewImpl({
       d1.dispose();
       d2.dispose();
       dIcon.dispose();
+    };
+  }, [label, webview, ctx]);
+  (0, import_react.useEffect)(() => {
+    if (!label || !webview) return;
+    const d = webview.on(label, "loading", (p) => {
+      const s = loadStatus(!!p.loading);
+      ctx.setStatus({ code: s.code, message: t(s.messageKey, langRef.current) });
+    });
+    return () => {
+      d.dispose();
+      ctx.setStatus(null);
     };
   }, [label, webview, ctx]);
   const openExternal = (0, import_react.useCallback)(

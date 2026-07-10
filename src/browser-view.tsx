@@ -12,6 +12,7 @@ import { createBrowserToolbar } from "soksak-kit-browser-common";
 import type { BrowserToolbar } from "soksak-kit-browser-common";
 import type { PluginApi, PluginViewContext } from "./host";
 import { boundsCommitDecision, followShouldContinue } from "./bounds-follow";
+import { loadStatus } from "./view-status";
 import { t } from "./i18n";
 import { registerLabel, unregisterLabel, setPendingUrl, takePendingUrl } from "./commands";
 
@@ -68,6 +69,9 @@ function BrowserViewImpl({
   initialUrl: string;
 }) {
   const lang = app.locale();
+  // status 메시지 해소용 — 로딩 이벤트 핸들러가 재구독 없이 최신 언어를 읽는다(언어 변경에 재구독 안 함).
+  const langRef = useRef(lang);
+  langRef.current = lang;
   const webview = app.webview;
 
   // viewId → 전역 유일 label(창 네임스페이스) — webview 단일 진실에서만 파생.
@@ -380,6 +384,22 @@ function BrowserViewImpl({
       d1.dispose();
       d2.dispose();
       dIcon.dispose();
+    };
+  }, [label, webview, ctx]);
+
+  // 뷰 status 축(C2) — 코어 browser-loading 신호를 코어 status 축(ctx.setStatus)으로 보고한다.
+  // 로딩 중=busy(닫기 가드 대상), 로드 완료=ready(표시 전용). 매핑은 순수(view-status.ts) 소유.
+  // 로드 실패(error)는 코어 webview API 에 신호가 없어 보고하지 않는다(억지 상태 금지 — view-status.ts).
+  // 뷰 언마운트 시 status 를 회수(null) — 코어도 뷰 종속으로 회수하지만 명시적으로 해제한다.
+  useEffect(() => {
+    if (!label || !webview) return;
+    const d = webview.on(label, "loading", (p) => {
+      const s = loadStatus(!!p.loading);
+      ctx.setStatus({ code: s.code, message: t(s.messageKey, langRef.current) });
+    });
+    return () => {
+      d.dispose();
+      ctx.setStatus(null);
     };
   }, [label, webview, ctx]);
 

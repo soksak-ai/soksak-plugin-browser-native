@@ -13,6 +13,8 @@ const EN: Dict = {
   removeBookmark: "Remove bookmark",
   noBookmarks: "No bookmarks",
   inspect: "Inspect (devtools)",
+  statusLoading: "Loading…",
+  statusReady: "Ready",
 };
 
 const KO: Dict = {
@@ -27,6 +29,8 @@ const KO: Dict = {
   removeBookmark: "즐겨찾기 제거",
   noBookmarks: "즐겨찾기가 없습니다",
   inspect: "인스펙트(devtools)",
+  statusLoading: "로딩 중…",
+  statusReady: "준비됨",
 };
 
 export function t(key: string, lang: string): string {
