@@ -41,31 +41,21 @@ export default {
         app.ui.registerView("content", {
           mount(container: HTMLElement, vctx: PluginViewContext) {
             // 시작 URL 우선순위: 대기 URL(open 명령 / open-external 새 탭이 set) →
-            // 저장 URL(복원 — 이 뷰가 마지막으로 보던 페이지, R-OWN) → homeUrl 설정 → blank.
+            // 복원 상태(B3 restore.state — 뷰 레코드 영속, 뷰와 수명 동기) → homeUrl 설정 → blank.
             // takePendingUrl 은 1회 소비(다음 mount 가 잘못 이어받지 않게).
+            // 플러그인 kv(vurl:viewId) 복원은 폐기 — viewId 는 세션 넘어 재사용되어
+            // 죽은 뷰의 잔재가 새 뷰에 유입된다(실측: 새 탭이 유령 URL 로 시작).
             const pending = takePendingUrl();
-            const fallback =
+            const rs = vctx.restore?.state as { url?: string } | null | undefined;
+            const url =
               pending ??
+              (typeof rs?.url === "string" && rs.url ? rs.url : null) ??
               (app.settings.get("homeUrl") as string | undefined) ??
               "about:blank";
-            const doMount = (url: string) => {
-              // kv 조회 대기 중 unmount 된 컨테이너에는 그리지 않는다(분리 잔재 가드).
-              if (!container.isConnected) return;
-              mountInto(
-                container,
-                <BrowserView app={app} ctx={vctx} initialUrl={url} />,
-              );
-            };
-            if (!pending && vctx.viewId && app.data) {
-              void app.data.kv
-                .get(`vurl:${vctx.viewId}`)
-                .then((v) =>
-                  doMount(typeof v === "string" && v ? v : fallback),
-                )
-                .catch(() => doMount(fallback));
-              return;
-            }
-            doMount(fallback);
+            mountInto(
+              container,
+              <BrowserView app={app} ctx={vctx} initialUrl={url} />,
+            );
           },
           unmount(container: HTMLElement) {
             unmountContainer(container);
@@ -75,6 +65,15 @@ export default {
     }
 
     registerCommands(ctx);
+
+    // 레거시 vurl 원장 제거 — B3 restore.state 로 이관 완료. 원장은 죽은 뷰의 잔재를
+    // 남겨 재사용 viewId 와 충돌했으므로 흡수 없이 폐기한다.
+    if (app.data) {
+      void app.data.kv
+        .keys("vurl:")
+        .then((ks) => { for (const k of ks) void app.data!.kv.delete(k); })
+        .catch(() => {});
+    }
   },
   deactivate() {
     const s = document.getElementById("sk-browser-style");
