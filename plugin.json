@@ -76,7 +76,11 @@
         ],
         "defaultPlacement": "content",
         "transparent": true,
-        "nativeSurface": true
+        "nativeSurface": true,
+        "status": [
+          "busy",
+          "ready"
+        ]
       }
     ],
     "programs": [
