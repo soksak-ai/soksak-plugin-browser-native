@@ -322,8 +322,19 @@ function BrowserViewImpl({
       lastRectRef.current = "";
       syncBounds(true);
     });
-    return () => off.dispose();
-  }, [webview, label, app, syncBounds]);
+    // 코어 view.parked(시트 && 탭 유효 가시성) — 표시/숨김은 코어가 직접 수행하고, 여기서는 복귀
+    // 직후 앵커 rect 로 재스냅만 한다. reflow 와 달리 뷰 단위 정확 신호라 파킹 rect 를 읽는 경쟁이 없다.
+    const offPark = app.events.on("view.parked", (p) => {
+      const q = p as { viewId?: string; parked?: boolean };
+      if (q.viewId !== ctx.viewId || q.parked) return;
+      lastRectRef.current = "";
+      requestAnimationFrame(() => syncBounds(true));
+    });
+    return () => {
+      off.dispose();
+      offPark.dispose();
+    };
+  }, [webview, label, app, syncBounds, ctx.viewId]);
 
   // webview nav 이벤트 → localUrl 동기화 + ctx.setTitle
   useEffect(() => {
