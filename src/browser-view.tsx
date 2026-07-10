@@ -363,17 +363,16 @@ function BrowserViewImpl({
     // link[rel~=icon] 우선, 없으면 origin/favicon.ico. 빈 결과도 보고(이전 아이콘 해제).
     const dIcon = webview.on(label, "loading", (p) => {
       if (p.loading) return; // 완료 시점에만
+      // eval 계약: js 는 "함수 본문"이고 최상위 return 으로 문자열을 돌려준다(callAsyncJavaScript).
       void webview
         .eval(
           label,
-          `(() => {
-            const l = document.querySelector('link[rel~="icon" i], link[rel="shortcut icon" i]');
-            if (l && l.href) return l.href;
-            try { return location.protocol.startsWith("http") ? location.origin + "/favicon.ico" : ""; } catch { return ""; }
-          })()`,
+          `const l = document.querySelector('link[rel~="icon" i], link[rel="shortcut icon" i]');
+           if (l && l.href) return l.href;
+           try { return location.protocol.startsWith("http") ? location.origin + "/favicon.ico" : ""; } catch (e) { return ""; }`,
         )
         .then((r) => {
-          if (typeof r === "string") ctx.setIcon?.(r);
+          if (typeof r === "string" && r !== "null") ctx.setIcon?.(r);
         })
         .catch(() => {});
     });

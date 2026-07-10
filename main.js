@@ -13772,13 +13772,11 @@ function BrowserViewImpl({
       if (p.loading) return;
       void webview.eval(
         label,
-        `(() => {
-            const l = document.querySelector('link[rel~="icon" i], link[rel="shortcut icon" i]');
-            if (l && l.href) return l.href;
-            try { return location.protocol.startsWith("http") ? location.origin + "/favicon.ico" : ""; } catch { return ""; }
-          })()`
+        `const l = document.querySelector('link[rel~="icon" i], link[rel="shortcut icon" i]');
+           if (l && l.href) return l.href;
+           try { return location.protocol.startsWith("http") ? location.origin + "/favicon.ico" : ""; } catch (e) { return ""; }`
       ).then((r) => {
-        if (typeof r === "string") ctx.setIcon?.(r);
+        if (typeof r === "string" && r !== "null") ctx.setIcon?.(r);
       }).catch(() => {
       });
     });
