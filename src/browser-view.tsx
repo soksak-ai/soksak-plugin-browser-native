@@ -7,17 +7,15 @@
 //   - 아이콘: lucide-style inline SVG(코어 Icon 컴포넌트 비의존)
 
 import { memo, useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { createBrowserToolbar } from "soksak-browser-kit";
+import type { BrowserToolbar } from "soksak-browser-kit";
 import type { PluginApi, PluginViewContext } from "./host";
 import { boundsCommitDecision, followShouldContinue } from "./bounds-follow";
 import { t } from "./i18n";
 import { registerLabel, unregisterLabel, setPendingUrl, takePendingUrl } from "./commands";
 
 // ── IME 조합 중 Enter 무시 (코어 imeKeys.ts 이식) ────────────────────────────
-function isComposingEnter(
-  e: React.KeyboardEvent,
-): boolean {
-  return e.key === "Enter" && (e.nativeEvent.isComposing || e.keyCode === 229);
-}
 
 // 드래그(라이브 리사이즈) 중 네이티브 webview 재배치 상한. WKWebView set_size 는 비싸서
 // 매 프레임(60~120Hz) 호출하면 OS 자체 라이브 리사이즈와 겹쳐 CPU 가 폭발한다 → ~30Hz 로
@@ -41,42 +39,6 @@ interface Bookmark {
 }
 
 // ── Inline SVG 아이콘 (lucide-style, stroke=currentColor) ────────────────────
-function IconBack() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}
-function IconForward() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}
-function IconReload() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="23 4 23 10 17 10" />
-      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-    </svg>
-  );
-}
-function IconStarFilled() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-  );
-}
-function IconStar() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-  );
-}
 function IconMenu() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -128,11 +90,33 @@ function BrowserViewImpl({
   const [localUrl, setLocalUrl] = useState(initialUrl);
   // reload 명령이 최신 URL 에 접근할 수 있도록 ref 동기화(클로저 스탈 방지).
   const localUrlRef = useRef(initialUrl);
-  const [input, setInput] = useState(initialUrl);
   const [bmOpen, setBmOpen] = useState(false);
+  // 공용 툴바(soksak-browser-kit) — 세 브라우저 동일 DOM·노드·외형. 콜백은 ref 경유(재마운트 없음).
+  const tbHostRef = useRef<HTMLDivElement | null>(null);
+  const [tb, setTb] = useState<BrowserToolbar | null>(null);
+  const tbCbRef = useRef({
+    onNavigate: (_raw: string) => {},
+    onBack: () => {}, onForward: () => {}, onReload: () => {}, onStop: () => {}, onHome: () => {},
+    onBookmarkToggle: () => {},
+  });
+  useEffect(() => {
+    const host = tbHostRef.current;
+    if (!host) return;
+    const t2 = createBrowserToolbar(host, {
+      onNavigate: (raw) => tbCbRef.current.onNavigate(raw),
+      onBack: () => tbCbRef.current.onBack(),
+      onForward: () => tbCbRef.current.onForward(),
+      onReload: () => tbCbRef.current.onReload(),
+      onStop: () => tbCbRef.current.onStop(),
+      onHome: () => tbCbRef.current.onHome(),
+      onBookmarkToggle: () => tbCbRef.current.onBookmarkToggle(),
+    });
+    setTb(t2);
+    return () => { setTb(null); t2.dispose(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [dtOpen, setDtOpen] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  const inputFocusRef = useRef(false);
 
   // 즐겨찾기 로드 + 구독
   useEffect(() => {
@@ -166,7 +150,6 @@ function BrowserViewImpl({
   // URL 상태 변화(네비게이션/외부) → 입력칸 동기화(직접 입력 중엔 방해 안 함).
   useEffect(() => {
     localUrlRef.current = localUrl;
-    if (!inputFocusRef.current) setInput(localUrl);
   }, [localUrl]);
 
   // bounds 측정+전송. 반환: "sent"=네이티브로 보냄 / "pending"=변화 있으나 드래그 스로틀로
@@ -426,100 +409,57 @@ function BrowserViewImpl({
     }
   }, [app.data, localUrl, isBookmarked]);
 
+  // 공용 툴바 ↔ React 상태 동기. native 는 코어 loading 이벤트가 아직 없어 nav-state 는 초기값 유지
+  // (#15 코어 KVO 후 setNavState 배선이 드롭인). stop 은 코어 stop invoke 부재로 reload 와 동일 처리.
+  tbCbRef.current = {
+    onNavigate: (raw) => navigate(raw),
+    onBack: () => { if (label && webview) void webview.history(label, -1); },
+    onForward: () => { if (label && webview) void webview.history(label, 1); },
+    onReload: () => { if (label && webview) void webview.navigate(label, localUrlRef.current); },
+    onStop: () => { if (label && webview) void webview.navigate(label, localUrlRef.current); },
+    onHome: () => navigate(String(app.settings.get("homeUrl") ?? "about:blank")),
+    onBookmarkToggle: () => void toggleBookmark(),
+  };
+  // 코어 loading 이벤트 부재(#15) — 히스토리 가능 여부를 모른다. 차단 대신 항상 활성으로 둔다.
+  useEffect(() => { tb?.setNavState({ loading: false, canBack: true, canForward: true }); }, [tb]);
+  useEffect(() => { tb?.setUrl(localUrl); }, [tb, localUrl]);
+  useEffect(() => { tb?.setBookmarked(isBookmarked); }, [tb, isBookmarked]);
+
   if (!label || !webview) {
     return <div className="browser-view" />;
   }
 
   return (
     <div className="browser-view">
-      <div className="bv-bar">
-        <button
-          type="button"
-          className="bv-btn"
-          title={t("back", lang)}
-          data-node="back"
-          onClick={() => void webview.history(label, -1)}
-        >
-          <IconBack />
-        </button>
-        <button
-          type="button"
-          className="bv-btn"
-          title={t("forward", lang)}
-          data-node="forward"
-          onClick={() => void webview.history(label, 1)}
-        >
-          <IconForward />
-        </button>
-        <button
-          type="button"
-          className="bv-btn"
-          title={t("reload", lang)}
-          data-node="reload"
-          onClick={() => void webview.navigate(label, localUrl)}
-        >
-          <IconReload />
-        </button>
-        <button
-          type="button"
-          className="bv-btn"
-          title={t("home", lang)}
-          data-node="home"
-          onClick={() => navigate(String(app.settings.get("homeUrl") ?? "about:blank"))}
-        >
-          <span aria-hidden>⌂</span>
-        </button>
-        <input
-          className="bv-url"
-          value={input}
-          spellCheck={false}
-          placeholder={t("urlPlaceholder", lang)}
-          data-node="urlbar"
-          onFocus={() => { inputFocusRef.current = true; }}
-          onBlur={() => {
-            inputFocusRef.current = false;
-            setInput(localUrl);
-          }}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (isComposingEnter(e)) return;
-            if (e.key === "Enter") {
-              e.preventDefault();
-              navigate(input);
-              e.currentTarget.blur();
-            }
-          }}
-        />
-        <button
-          type="button"
-          className={`bv-btn${isBookmarked ? " on" : ""}`}
-          title={t("bookmark", lang)}
-          onClick={() => void toggleBookmark()}
-        >
-          {isBookmarked ? <IconStarFilled /> : <IconStar />}
-        </button>
-        <button
-          type="button"
-          className={`bv-btn${dtOpen ? " on" : ""}`}
-          title={t("inspect", lang)}
-          data-node="devtools"
-          onClick={() => {
-            void webview.devtools(label)
-              .then((open) => setDtOpen(open))
-              .catch(() => {});
-          }}
-        >
-          <IconTerminal />
-        </button>
-        <button
-          type="button"
-          className={`bv-btn${bmOpen ? " on" : ""}`}
-          title={t("bookmarks", lang)}
-          onClick={() => setBmOpen((o) => !o)}
-        >
-          <IconMenu />
-        </button>
-      </div>
+      {/* 공용 툴바(soksak-browser-kit) 호스트 — 고유 버튼(devtools·북마크 메뉴)은 extraSlot 포털. */}
+      <div ref={tbHostRef} style={{ flex: "0 0 auto" }} />
+      {tb &&
+        createPortal(
+          <>
+            <button
+              type="button"
+              className={`bv-btn${dtOpen ? " on" : ""}`}
+              title={t("inspect", lang)}
+              data-node="devtools"
+              onClick={() => {
+                void webview.devtools(label)
+                  .then((open) => setDtOpen(open))
+                  .catch(() => {});
+              }}
+            >
+              <IconTerminal />
+            </button>
+            <button
+              type="button"
+              className={`bv-btn${bmOpen ? " on" : ""}`}
+              title={t("bookmarks", lang)}
+              onClick={() => setBmOpen((o) => !o)}
+            >
+              <IconMenu />
+            </button>
+          </>,
+          tb.extraSlot,
+        )}
       {bmOpen && (
         <div className="bv-bm-list">
           {bookmarks.length === 0 && (
