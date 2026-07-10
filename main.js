@@ -12757,7 +12757,7 @@ var import_client = __toESM(require_client(), 1);
 var import_react = __toESM(require_react(), 1);
 var import_react_dom = __toESM(require_react_dom(), 1);
 
-// ../../../ai/cli/soksak-browser-kit/src/url.ts
+// ../../kits/soksak-kit-browser-shell/src/url.ts
 function normalizeUrl(raw) {
   const s = raw.trim();
   if (!s) return "about:blank";
@@ -12766,7 +12766,7 @@ function normalizeUrl(raw) {
   return `https://www.google.com/search?q=${encodeURIComponent(s)}`;
 }
 
-// ../../../ai/cli/soksak-browser-kit/src/nav-state.ts
+// ../../kits/soksak-kit-browser-shell/src/nav-state.ts
 var initialNavState = { loading: false, canBack: false, canForward: false };
 function renderNavState(s) {
   return {
@@ -12779,7 +12779,7 @@ function renderNavState(s) {
   };
 }
 
-// ../../../ai/cli/soksak-browser-kit/src/toolbar.ts
+// ../../kits/soksak-kit-browser-shell/src/toolbar.ts
 function btn(node, label, title) {
   const b = document.createElement("button");
   b.type = "button";
@@ -13714,16 +13714,32 @@ function BrowserViewImpl({
       lastRectRef.current = "";
       syncBounds(true);
     });
-    return () => off.dispose();
-  }, [webview, label, app, syncBounds]);
+    const offPark = app.events.on("view.parked", (p) => {
+      const q = p;
+      if (q.viewId !== ctx.viewId || q.parked) return;
+      lastRectRef.current = "";
+      requestAnimationFrame(() => syncBounds(true));
+    });
+    return () => {
+      off.dispose();
+      offPark.dispose();
+    };
+  }, [webview, label, app, syncBounds, ctx.viewId]);
   (0, import_react.useEffect)(() => {
     if (!label || !webview) return;
     const d1 = webview.on(label, "nav", (p) => {
       const url = p.url;
       setLocalUrl(url);
-      if (ctx.viewId && app.data && url && url !== "about:blank")
-        void app.data.kv.set(`vurl:${ctx.viewId}`, url).catch(() => {
-        });
+      if (url) {
+        let t2 = url;
+        try {
+          t2 = new URL(url).host || url;
+        } catch {
+        }
+        ctx.setTitle(t2);
+      }
+      if (ctx.viewId && url && url !== "about:blank")
+        ctx.setRestoreState?.({ url });
     });
     const d2 = webview.on(label, "title", (p) => {
       const title = p.title;
@@ -14025,21 +14041,12 @@ var plugin_entry_default = {
         app.ui.registerView("content", {
           mount(container, vctx) {
             const pending = takePendingUrl();
-            const fallback = pending ?? app.settings.get("homeUrl") ?? "about:blank";
-            const doMount = (url) => {
-              if (!container.isConnected) return;
-              mountInto(
-                container,
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BrowserView, { app, ctx: vctx, initialUrl: url })
-              );
-            };
-            if (!pending && vctx.viewId && app.data) {
-              void app.data.kv.get(`vurl:${vctx.viewId}`).then(
-                (v) => doMount(typeof v === "string" && v ? v : fallback)
-              ).catch(() => doMount(fallback));
-              return;
-            }
-            doMount(fallback);
+            const rs = vctx.restore?.state;
+            const url = pending ?? (typeof rs?.url === "string" && rs.url ? rs.url : null) ?? app.settings.get("homeUrl") ?? "about:blank";
+            mountInto(
+              container,
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BrowserView, { app, ctx: vctx, initialUrl: url })
+            );
           },
           unmount(container) {
             unmountContainer(container);
@@ -14048,6 +14055,12 @@ var plugin_entry_default = {
       );
     }
     registerCommands(ctx);
+    if (app.data) {
+      void app.data.kv.keys("vurl:").then((ks) => {
+        for (const k of ks) void app.data.kv.delete(k);
+      }).catch(() => {
+      });
+    }
   },
   deactivate() {
     const s = document.getElementById("sk-browser-style");

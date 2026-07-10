@@ -8,8 +8,8 @@
 
 import { memo, useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { createBrowserToolbar } from "soksak-browser-kit";
-import type { BrowserToolbar } from "soksak-browser-kit";
+import { createBrowserToolbar } from "soksak-kit-browser-shell";
+import type { BrowserToolbar } from "soksak-kit-browser-shell";
 import type { PluginApi, PluginViewContext } from "./host";
 import { boundsCommitDecision, followShouldContinue } from "./bounds-follow";
 import { t } from "./i18n";
@@ -91,7 +91,7 @@ function BrowserViewImpl({
   // reload 명령이 최신 URL 에 접근할 수 있도록 ref 동기화(클로저 스탈 방지).
   const localUrlRef = useRef(initialUrl);
   const [bmOpen, setBmOpen] = useState(false);
-  // 공용 툴바(soksak-browser-kit) — 세 브라우저 동일 DOM·노드·외형. 콜백은 ref 경유(재마운트 없음).
+  // 공용 툴바(soksak-kit-browser-shell) — 세 브라우저 동일 DOM·노드·외형. 콜백은 ref 경유(재마운트 없음).
   const tbHostRef = useRef<HTMLDivElement | null>(null);
   const [tb, setTb] = useState<BrowserToolbar | null>(null);
   const tbCbRef = useRef({
@@ -456,7 +456,7 @@ function BrowserViewImpl({
 
   return (
     <div className="browser-view">
-      {/* 공용 툴바(soksak-browser-kit) 호스트 — 고유 버튼(devtools·북마크 메뉴)은 extraSlot 포털. */}
+      {/* 공용 툴바(soksak-kit-browser-shell) 호스트 — 고유 버튼(devtools·북마크 메뉴)은 extraSlot 포털. */}
       <div ref={tbHostRef} style={{ flex: "0 0 auto" }} />
       {tb &&
         createPortal(
