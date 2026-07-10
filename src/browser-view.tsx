@@ -416,12 +416,18 @@ function BrowserViewImpl({
     onBack: () => { if (label && webview) void webview.history(label, -1); },
     onForward: () => { if (label && webview) void webview.history(label, 1); },
     onReload: () => { if (label && webview) void webview.navigate(label, localUrlRef.current); },
-    onStop: () => { if (label && webview) void webview.navigate(label, localUrlRef.current); },
+    onStop: () => { if (label && webview) void webview.stop?.(label); },
     onHome: () => navigate(String(app.settings.get("homeUrl") ?? "about:blank")),
     onBookmarkToggle: () => void toggleBookmark(),
   };
-  // 코어 loading 이벤트 부재(#15) — 히스토리 가능 여부를 모른다. 차단 대신 항상 활성으로 둔다.
-  useEffect(() => { tb?.setNavState({ loading: false, canBack: true, canForward: true }); }, [tb]);
+  // 코어 loading 이벤트(browser-loading: didStart/didFinish + canGoBack/canGoForward) → 툴바 상태.
+  useEffect(() => {
+    if (!tb || !label || !webview) return;
+    const d = webview.on(label, "loading", (p) => {
+      tb.setNavState({ loading: !!p.loading, canBack: !!p.canBack, canForward: !!p.canForward });
+    });
+    return () => d.dispose();
+  }, [tb, label, webview]);
   useEffect(() => { tb?.setUrl(localUrl); }, [tb, localUrl]);
   useEffect(() => { tb?.setBookmarked(isBookmarked); }, [tb, isBookmarked]);
 

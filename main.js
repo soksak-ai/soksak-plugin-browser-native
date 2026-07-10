@@ -13796,14 +13796,18 @@ function BrowserViewImpl({
       if (label && webview) void webview.navigate(label, localUrlRef.current);
     },
     onStop: () => {
-      if (label && webview) void webview.navigate(label, localUrlRef.current);
+      if (label && webview) void webview.stop?.(label);
     },
     onHome: () => navigate(String(app.settings.get("homeUrl") ?? "about:blank")),
     onBookmarkToggle: () => void toggleBookmark()
   };
   (0, import_react.useEffect)(() => {
-    tb?.setNavState({ loading: false, canBack: true, canForward: true });
-  }, [tb]);
+    if (!tb || !label || !webview) return;
+    const d = webview.on(label, "loading", (p) => {
+      tb.setNavState({ loading: !!p.loading, canBack: !!p.canBack, canForward: !!p.canForward });
+    });
+    return () => d.dispose();
+  }, [tb, label, webview]);
   (0, import_react.useEffect)(() => {
     tb?.setUrl(localUrl);
   }, [tb, localUrl]);
