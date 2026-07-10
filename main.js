@@ -12866,6 +12866,64 @@ function createBrowserToolbar(container, cb) {
   };
 }
 
+// ../../kits/soksak-kit-browser-common/src/dom-snippets.ts
+var jsStr = (s) => JSON.stringify(s);
+function domTextBody(selector, maxLength = 2e4) {
+  return selector ? `const el = document.querySelector(${jsStr(selector)}); return el ? el.innerText.slice(0, ${maxLength}) : null;` : `return document.body.innerText.slice(0, ${maxLength});`;
+}
+function domHtmlBody(selector, maxLength = 2e4) {
+  return selector ? `const el = document.querySelector(${jsStr(selector)}); return el ? el.outerHTML.slice(0, ${maxLength}) : null;` : `return document.documentElement.outerHTML.slice(0, ${maxLength});`;
+}
+function domQueryBody(selector, limit = 20) {
+  return `
+          const all = [...document.querySelectorAll(${jsStr(selector)})];
+          return { count: all.length, elements: all.slice(0, ${limit}).map(e => ({
+            tag: e.tagName.toLowerCase(),
+            text: (e.innerText || "").trim().slice(0, 120) || undefined,
+            id: e.id || undefined,
+            class: (typeof e.className === "string" && e.className) || undefined,
+            name: e.getAttribute("name") || undefined,
+            href: e.getAttribute("href") || undefined,
+            type: e.getAttribute("type") || undefined,
+            value: e.value !== undefined ? String(e.value).slice(0, 120) : undefined,
+          })) };`;
+}
+function domClickBody(selector) {
+  return `const el = document.querySelector(${jsStr(selector)}); if (!el) return { clicked: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" }; el.click(); return { clicked: true };`;
+}
+function domFillBody(selector, text) {
+  return `
+          const el = document.querySelector(${jsStr(selector)});
+          if (!el) return { filled: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
+          const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+          if (setter) setter.call(el, ${jsStr(text)}); else el.value = ${jsStr(text)};
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          return { filled: true };`;
+}
+function domSubmitBody(selector) {
+  return `
+          const el = document.querySelector(${jsStr(selector)});
+          if (!el) return { submitted: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
+          const form = el instanceof HTMLFormElement ? el : el.closest("form");
+          if (!form) return { submitted: false, reason: "form \uC5C6\uC74C" };
+          form.requestSubmit ? form.requestSubmit() : form.submit();
+          return { submitted: true };`;
+}
+function domWaitForBody(selector, timeoutMs = 5e3) {
+  return `
+          const find = () => document.querySelector(${jsStr(selector)});
+          if (find()) return { found: true };
+          return await new Promise((resolve) => {
+            const obs = new MutationObserver(() => {
+              if (find()) { obs.disconnect(); clearTimeout(timer); resolve({ found: true }); }
+            });
+            const timer = setTimeout(() => { obs.disconnect(); resolve({ found: false }); }, ${timeoutMs});
+            obs.observe(document.documentElement, { childList: true, subtree: true });
+          });`;
+}
+
 // src/bounds-follow.ts
 function followShouldContinue(i) {
   return i.live || i.gesture || i.stableFrames < i.stopAfter;
@@ -12956,7 +13014,6 @@ var targetParam = {
     required: false
   }
 };
-var sel = (s) => JSON.stringify(s);
 async function evalJson(webview, label, body) {
   const wrapped = `const __r = await (async () => { ${body} })(); return JSON.stringify(__r === undefined ? null : __r);`;
   const raw = await webview.eval(label, wrapped);
@@ -13172,7 +13229,7 @@ function registerCommands(ctx) {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const max = typeof p.maxLength === "number" ? p.maxLength : 2e4;
-        const js = p.selector ? `const el = document.querySelector(${sel(String(p.selector))}); return el ? el.innerText.slice(0, ${max}) : null;` : `return document.body.innerText.slice(0, ${max});`;
+        const js = domTextBody(p.selector ? String(p.selector) : void 0, max);
         try {
           const text = await evalJson(app.webview, entry.label, js);
           return { ok: true, text, viewId: entry.viewId };
@@ -13197,7 +13254,7 @@ function registerCommands(ctx) {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const max = typeof p.maxLength === "number" ? p.maxLength : 5e4;
-        const js = p.selector ? `const el = document.querySelector(${sel(String(p.selector))}); return el ? el.outerHTML.slice(0, ${max}) : null;` : `return document.documentElement.outerHTML.slice(0, ${max});`;
+        const js = domHtmlBody(p.selector ? String(p.selector) : void 0, max);
         try {
           const html = await evalJson(app.webview, entry.label, js);
           return { ok: true, html, viewId: entry.viewId };
@@ -13226,18 +13283,7 @@ function registerCommands(ctx) {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const limit = typeof p.limit === "number" ? p.limit : 20;
-        const js = `
-          const all = [...document.querySelectorAll(${sel(String(p.selector))})];
-          return { count: all.length, elements: all.slice(0, ${limit}).map(e => ({
-            tag: e.tagName.toLowerCase(),
-            text: (e.innerText || "").trim().slice(0, 120) || undefined,
-            id: e.id || undefined,
-            class: (typeof e.className === "string" && e.className) || undefined,
-            name: e.getAttribute("name") || undefined,
-            href: e.getAttribute("href") || undefined,
-            type: e.getAttribute("type") || undefined,
-            value: e.value !== undefined ? String(e.value).slice(0, 120) : undefined,
-          })) };`;
+        const js = domQueryBody(String(p.selector), limit);
         try {
           const r = await evalJson(app.webview, entry.label, js);
           return { ok: true, ...r, viewId: entry.viewId };
@@ -13260,7 +13306,7 @@ function registerCommands(ctx) {
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
-        const js = `const el = document.querySelector(${sel(String(p.selector))}); if (!el) return { clicked: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" }; el.click(); return { clicked: true };`;
+        const js = domClickBody(String(p.selector));
         try {
           const r = await evalJson(app.webview, entry.label, js);
           return { ok: true, ...r, viewId: entry.viewId };
@@ -13284,15 +13330,7 @@ function registerCommands(ctx) {
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
-        const js = `
-          const el = document.querySelector(${sel(String(p.selector))});
-          if (!el) return { filled: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
-          const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-          const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-          if (setter) setter.call(el, ${sel(String(p.text ?? ""))}); else el.value = ${sel(String(p.text ?? ""))};
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          return { filled: true };`;
+        const js = domFillBody(String(p.selector), String(p.text ?? ""));
         try {
           const r = await evalJson(app.webview, entry.label, js);
           return { ok: true, ...r, viewId: entry.viewId };
@@ -13315,13 +13353,7 @@ function registerCommands(ctx) {
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
-        const js = `
-          const el = document.querySelector(${sel(String(p.selector))});
-          if (!el) return { submitted: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
-          const form = el instanceof HTMLFormElement ? el : el.closest("form");
-          if (!form) return { submitted: false, reason: "form \uC5C6\uC74C" };
-          form.requestSubmit ? form.requestSubmit() : form.submit();
-          return { submitted: true };`;
+        const js = domSubmitBody(String(p.selector));
         try {
           const r = await evalJson(app.webview, entry.label, js);
           return { ok: true, ...r, viewId: entry.viewId };
@@ -13346,16 +13378,7 @@ function registerCommands(ctx) {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 5e3;
-        const js = `
-          const find = () => document.querySelector(${sel(String(p.selector))});
-          if (find()) return { found: true };
-          return await new Promise((resolve) => {
-            const obs = new MutationObserver(() => {
-              if (find()) { obs.disconnect(); clearTimeout(timer); resolve({ found: true }); }
-            });
-            const timer = setTimeout(() => { obs.disconnect(); resolve({ found: false }); }, ${timeoutMs});
-            obs.observe(document.documentElement, { childList: true, subtree: true });
-          });`;
+        const js = domWaitForBody(String(p.selector), timeoutMs);
         try {
           const r = await evalJson(app.webview, entry.label, js);
           return { ok: true, ...r, viewId: entry.viewId };
@@ -13745,9 +13768,24 @@ function BrowserViewImpl({
       const title = p.title;
       if (title) ctx.setTitle(title);
     });
+    const dIcon = webview.on(label, "loading", (p) => {
+      if (p.loading) return;
+      void webview.eval(
+        label,
+        `(() => {
+            const l = document.querySelector('link[rel~="icon" i], link[rel="shortcut icon" i]');
+            if (l && l.href) return l.href;
+            try { return location.protocol.startsWith("http") ? location.origin + "/favicon.ico" : ""; } catch { return ""; }
+          })()`
+      ).then((r) => {
+        if (typeof r === "string") ctx.setIcon?.(r);
+      }).catch(() => {
+      });
+    });
     return () => {
       d1.dispose();
       d2.dispose();
+      dIcon.dispose();
     };
   }, [label, webview, ctx]);
   const openExternal = (0, import_react.useCallback)(

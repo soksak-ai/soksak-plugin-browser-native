@@ -3,7 +3,7 @@
 //   - 코어 evalInBrowser 래퍼(async IIFE + JSON.stringify)를 evalJson 으로 재현(app.webview.eval
 //     은 raw 패스스루라 호출측이 직접 감싸야 한다 — browser_eval 은 문자열 반환을 요구).
 //   - dom.* JS 스니펫·param 이름·반환 형태를 코어와 동일하게 유지(AI/E2E 행동 무변).
-import { normalizeUrl } from "soksak-kit-browser-common";
+import { normalizeUrl , domTextBody, domHtmlBody, domQueryBody, domClickBody, domFillBody, domSubmitBody, domWaitForBody } from "soksak-kit-browser-common";
 import type { PluginContext, WebviewApi } from "./host";
 
 // 새 브라우저 탭을 열 때 mount 가 homeUrl 대신 소비할 "대기 URL".
@@ -79,9 +79,6 @@ const targetParam = {
     required: false,
   },
 };
-
-// JS 인자 직렬화(코어 sel — JSON.stringify 로 selector/text 를 안전한 JS 리터럴로).
-const sel = (s: string) => JSON.stringify(s);
 
 // 코어 evalInBrowser 의 충실한 이식. app.webview.eval(label, js) 은 browser_eval 패스스루로,
 // js 는 "문자열을 반환"해야 한다(WKWebView callAsyncJavaScript 가 문자열 결과만 받음). 본문을
@@ -341,9 +338,7 @@ export function registerCommands(ctx: PluginContext): void {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const max = typeof p.maxLength === "number" ? p.maxLength : 20000;
-        const js = p.selector
-          ? `const el = document.querySelector(${sel(String(p.selector))}); return el ? el.innerText.slice(0, ${max}) : null;`
-          : `return document.body.innerText.slice(0, ${max});`;
+        const js = domTextBody(p.selector ? String(p.selector) : undefined, max); // 스니펫 단일 소스(kit)
         try {
           const text = await evalJson(app.webview, entry.label, js);
           return { ok: true, text, viewId: entry.viewId };
@@ -370,9 +365,7 @@ export function registerCommands(ctx: PluginContext): void {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const max = typeof p.maxLength === "number" ? p.maxLength : 50000;
-        const js = p.selector
-          ? `const el = document.querySelector(${sel(String(p.selector))}); return el ? el.outerHTML.slice(0, ${max}) : null;`
-          : `return document.documentElement.outerHTML.slice(0, ${max});`;
+        const js = domHtmlBody(p.selector ? String(p.selector) : undefined, max);
         try {
           const html = await evalJson(app.webview, entry.label, js);
           return { ok: true, html, viewId: entry.viewId };
@@ -407,18 +400,7 @@ export function registerCommands(ctx: PluginContext): void {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const limit = typeof p.limit === "number" ? p.limit : 20;
-        const js = `
-          const all = [...document.querySelectorAll(${sel(String(p.selector))})];
-          return { count: all.length, elements: all.slice(0, ${limit}).map(e => ({
-            tag: e.tagName.toLowerCase(),
-            text: (e.innerText || "").trim().slice(0, 120) || undefined,
-            id: e.id || undefined,
-            class: (typeof e.className === "string" && e.className) || undefined,
-            name: e.getAttribute("name") || undefined,
-            href: e.getAttribute("href") || undefined,
-            type: e.getAttribute("type") || undefined,
-            value: e.value !== undefined ? String(e.value).slice(0, 120) : undefined,
-          })) };`;
+        const js = domQueryBody(String(p.selector), limit);
         try {
           const r = (await evalJson(app.webview, entry.label, js)) as object;
           return { ok: true, ...r, viewId: entry.viewId };
@@ -443,7 +425,7 @@ export function registerCommands(ctx: PluginContext): void {
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
-        const js = `const el = document.querySelector(${sel(String(p.selector))}); if (!el) return { clicked: false, reason: "selector 매칭 없음" }; el.click(); return { clicked: true };`;
+        const js = domClickBody(String(p.selector));
         try {
           const r = (await evalJson(app.webview, entry.label, js)) as object;
           return { ok: true, ...r, viewId: entry.viewId };
@@ -470,15 +452,7 @@ export function registerCommands(ctx: PluginContext): void {
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
-        const js = `
-          const el = document.querySelector(${sel(String(p.selector))});
-          if (!el) return { filled: false, reason: "selector 매칭 없음" };
-          const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-          const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-          if (setter) setter.call(el, ${sel(String(p.text ?? ""))}); else el.value = ${sel(String(p.text ?? ""))};
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          return { filled: true };`;
+        const js = domFillBody(String(p.selector), String(p.text ?? ""));
         try {
           const r = (await evalJson(app.webview, entry.label, js)) as object;
           return { ok: true, ...r, viewId: entry.viewId };
@@ -503,13 +477,7 @@ export function registerCommands(ctx: PluginContext): void {
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
-        const js = `
-          const el = document.querySelector(${sel(String(p.selector))});
-          if (!el) return { submitted: false, reason: "selector 매칭 없음" };
-          const form = el instanceof HTMLFormElement ? el : el.closest("form");
-          if (!form) return { submitted: false, reason: "form 없음" };
-          form.requestSubmit ? form.requestSubmit() : form.submit();
-          return { submitted: true };`;
+        const js = domSubmitBody(String(p.selector));
         try {
           const r = (await evalJson(app.webview, entry.label, js)) as object;
           return { ok: true, ...r, viewId: entry.viewId };
@@ -536,16 +504,7 @@ export function registerCommands(ctx: PluginContext): void {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
         const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 5000;
-        const js = `
-          const find = () => document.querySelector(${sel(String(p.selector))});
-          if (find()) return { found: true };
-          return await new Promise((resolve) => {
-            const obs = new MutationObserver(() => {
-              if (find()) { obs.disconnect(); clearTimeout(timer); resolve({ found: true }); }
-            });
-            const timer = setTimeout(() => { obs.disconnect(); resolve({ found: false }); }, ${timeoutMs});
-            obs.observe(document.documentElement, { childList: true, subtree: true });
-          });`;
+        const js = domWaitForBody(String(p.selector), timeoutMs);
         try {
           const r = (await evalJson(app.webview, entry.label, js)) as object;
           return { ok: true, ...r, viewId: entry.viewId };

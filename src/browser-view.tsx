@@ -359,9 +359,28 @@ function BrowserViewImpl({
       const title = p.title as string;
       if (title) ctx.setTitle(title);
     });
+    // 파비콘 — WKWebView 엔 파비콘 이벤트가 없어 로드 완료 시 페이지에서 추출한다(eval).
+    // link[rel~=icon] 우선, 없으면 origin/favicon.ico. 빈 결과도 보고(이전 아이콘 해제).
+    const dIcon = webview.on(label, "loading", (p) => {
+      if (p.loading) return; // 완료 시점에만
+      void webview
+        .eval(
+          label,
+          `(() => {
+            const l = document.querySelector('link[rel~="icon" i], link[rel="shortcut icon" i]');
+            if (l && l.href) return l.href;
+            try { return location.protocol.startsWith("http") ? location.origin + "/favicon.ico" : ""; } catch { return ""; }
+          })()`,
+        )
+        .then((r) => {
+          if (typeof r === "string") ctx.setIcon?.(r);
+        })
+        .catch(() => {});
+    });
     return () => {
       d1.dispose();
       d2.dispose();
+      dIcon.dispose();
     };
   }, [label, webview, ctx]);
 
