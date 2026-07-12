@@ -12,6 +12,9 @@
     "en": "Renders the browser as a content view — drives the core native child webview (OS webview) directly. Built-in URL bar, bookmarks, and devtools toggle."
   },
   "entry": "main.js",
+  "implements": [
+    "soksak-browser-spec@1"
+  ],
   "permissions": [
     "ui",
     "commands",

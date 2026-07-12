@@ -13068,7 +13068,7 @@ function registerCommands(ctx) {
       ] : [],
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         await app.webview.navigate(entry.label, String(p.url ?? ""));
         return { ok: true, viewId: entry.viewId };
       }
@@ -13083,7 +13083,7 @@ function registerCommands(ctx) {
       message: () => "\uC774\uC804 \uD398\uC774\uC9C0\uB85C \uB3CC\uC544\uAC14\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         await app.webview.history(entry.label, -1);
         return { ok: true, viewId: entry.viewId };
       }
@@ -13098,7 +13098,7 @@ function registerCommands(ctx) {
       message: () => "\uB2E4\uC74C \uD398\uC774\uC9C0\uB85C \uC774\uB3D9\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         await app.webview.history(entry.label, 1);
         return { ok: true, viewId: entry.viewId };
       }
@@ -13113,7 +13113,7 @@ function registerCommands(ctx) {
       message: () => "\uC0C8\uB85C\uACE0\uCE68\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const url = entry.getUrl();
         if (url && url !== "about:blank") {
           await app.webview.navigate(entry.label, url);
@@ -13131,7 +13131,7 @@ function registerCommands(ctx) {
       message: () => "\uD648\uC73C\uB85C \uC774\uB3D9\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const url = normalizeUrl(String(app.settings.get("homeUrl") ?? "about:blank"));
         await app.webview.navigate(entry.label, url);
         return { ok: true, viewId: entry.viewId, url };
@@ -13177,7 +13177,7 @@ function registerCommands(ctx) {
       message: (d) => d.open ? "\uAC1C\uBC1C\uC790 \uB3C4\uAD6C\uB97C \uC5F4\uC5C8\uC2B5\uB2C8\uB2E4." : "\uAC1C\uBC1C\uC790 \uB3C4\uAD6C\uB97C \uB2EB\uC558\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const open = await app.webview.devtools(entry.label);
         return { ok: true, open, viewId: entry.viewId };
       }
@@ -13209,16 +13209,21 @@ function registerCommands(ctx) {
         },
         ...targetParam
       },
-      returns: "{ ok, result?, viewId? }",
+      returns: "{ ok, value?, viewId? }",
       message: () => "\uC2A4\uD06C\uB9BD\uD2B8\uB97C \uC2E4\uD589\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         try {
-          const result = await evalJson(app.webview, entry.label, String(p.js ?? ""));
-          return { ok: true, result, viewId: entry.viewId };
+          const value = await evalJson(app.webview, entry.label, String(p.js ?? ""));
+          return { ok: true, value, viewId: entry.viewId };
         } catch (e) {
-          return { ok: false, code: "INTERNAL", message: evalErr(e) };
+          return {
+            ok: false,
+            code: "SCRIPT_ERROR",
+            message: "\uD398\uC774\uC9C0\uAC00 \uC2A4\uD06C\uB9BD\uD2B8\uB97C \uAC70\uBD80\uD588\uC2B5\uB2C8\uB2E4.",
+            data: { detail: evalErr(e), viewId: entry.viewId }
+          };
         }
       }
     })
@@ -13236,7 +13241,7 @@ function registerCommands(ctx) {
       message: (d) => `\uD14D\uC2A4\uD2B8 ${String(d.text ?? "").length}\uC790\uB97C \uC77D\uC5C8\uC2B5\uB2C8\uB2E4.`,
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const max = typeof p.maxLength === "number" ? p.maxLength : 2e4;
         const js = domTextBody(p.selector ? String(p.selector) : void 0, max);
         try {
@@ -13261,7 +13266,7 @@ function registerCommands(ctx) {
       message: (d) => `HTML ${String(d.html ?? "").length}\uC790\uB97C \uC77D\uC5C8\uC2B5\uB2C8\uB2E4.`,
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const max = typeof p.maxLength === "number" ? p.maxLength : 5e4;
         const js = domHtmlBody(p.selector ? String(p.selector) : void 0, max);
         try {
@@ -13290,7 +13295,7 @@ function registerCommands(ctx) {
       ] : [],
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const limit = typeof p.limit === "number" ? p.limit : 20;
         const js = domQueryBody(String(p.selector), limit);
         try {
@@ -13314,7 +13319,7 @@ function registerCommands(ctx) {
       message: (d) => d.clicked ? "\uC694\uC18C\uB97C \uD074\uB9AD\uD588\uC2B5\uB2C8\uB2E4." : "\uD074\uB9AD\uD560 \uC694\uC18C\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const js = domClickBody(String(p.selector));
         try {
           const r = await evalJson(app.webview, entry.label, js);
@@ -13331,15 +13336,23 @@ function registerCommands(ctx) {
       triggers: { ko: "DOM \uC785\uB825 \uCC44\uC6B0\uAE30 \uD3FC \uC785\uB825 \uD14D\uC2A4\uD2B8 \uC785\uB825 \uD544\uB4DC \uCC44\uC6B0\uAE30" },
       params: {
         selector: { type: "string", description: "CSS selector", required: true },
-        text: { type: "string", description: "Value to enter", required: true },
+        value: { type: "string", description: "Value to enter", required: false },
+        // 폼 컨트롤에 넣는 것의 이름은 value 다(HTMLInputElement.value). text 는 옛 이름이고,
+        // 그 이름으로 부르던 호출자를 깨지 않기 위해 받아만 준다. 하나는 반드시 와야 한다.
+        text: { type: "string", description: "Value to enter (alias of value)", required: false },
         ...targetParam
       },
       returns: "{ ok, filled?, viewId? }",
       message: (d) => d.filled ? "\uC785\uB825\uB780\uC744 \uCC44\uC6E0\uC2B5\uB2C8\uB2E4." : "\uCC44\uC6B8 \uC785\uB825\uB780\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
-        const js = domFillBody(String(p.selector), String(p.text ?? ""));
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
+        const given = typeof p.value === "string" ? p.value : typeof p.text === "string" ? p.text : null;
+        if (given === null) {
+          return { ok: false, code: "INVALID_PARAMS", message: "\uCC44\uC6B8 \uAC12\uC774 \uC5C6\uC2B5\uB2C8\uB2E4(value)." };
+        }
+        const filling = given;
+        const js = domFillBody(String(p.selector), filling);
         try {
           const r = await evalJson(app.webview, entry.label, js);
           return { ok: true, ...r, viewId: entry.viewId };
@@ -13361,7 +13374,7 @@ function registerCommands(ctx) {
       message: (d) => d.submitted ? "\uD3FC\uC744 \uC81C\uCD9C\uD588\uC2B5\uB2C8\uB2E4." : "\uC81C\uCD9C\uD560 \uD3FC\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const js = domSubmitBody(String(p.selector));
         try {
           const r = await evalJson(app.webview, entry.label, js);
@@ -13385,7 +13398,7 @@ function registerCommands(ctx) {
       message: (d) => d.found ? "\uC694\uC18C\uAC00 \uB098\uD0C0\uB0AC\uC2B5\uB2C8\uB2E4." : "\uC694\uC18C\uAC00 \uB098\uD0C0\uB098\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.",
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 5e3;
         const js = domWaitForBody(String(p.selector), timeoutMs);
         try {
@@ -13411,7 +13424,7 @@ function registerCommands(ctx) {
       message: (d) => `\uBBF8\uB514\uC5B4 ${(d.urls ?? []).length}\uAC1C\uB97C \uCC3E\uC558\uC2B5\uB2C8\uB2E4.`,
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
-        if (!entry || !app.webview) return { ok: false, code: "NO_TARGET", message: "no active browser view" };
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const webview = app.webview;
         const label = entry.label;
         const viewId = entry.viewId;
