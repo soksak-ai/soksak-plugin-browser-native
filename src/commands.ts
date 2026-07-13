@@ -253,7 +253,10 @@ export function registerCommands(ctx: PluginContext): void {
           if (url) takePendingUrl();
           return { ok: false, code: "VIEW_OPEN_FAILED", message: String(out.error ?? "view.open 실패") };
         }
-        return { ok: true, viewId: out.viewId, panelId: out.panelId };
+        // 코어 명령의 답은 봉투다 — 사실은 data 안에 있다(MESSAGE-PROTOCOL). 평면으로 읽으면
+        // 뷰는 열리는데 그 뷰의 id 를 아무도 못 받는다: 소비자가 다시 그 뷰를 가리킬 방법이 없다.
+        const opened = (out.data ?? out) as { viewId?: string; panelId?: string };
+        return { ok: true, viewId: opened.viewId, panelId: opened.panelId };
       },
     }),
   );

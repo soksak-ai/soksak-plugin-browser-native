@@ -13164,7 +13164,8 @@ function registerCommands(ctx) {
           if (url) takePendingUrl();
           return { ok: false, code: "VIEW_OPEN_FAILED", message: String(out.error ?? "view.open \uC2E4\uD328") };
         }
-        return { ok: true, viewId: out.viewId, panelId: out.panelId };
+        const opened = out.data ?? out;
+        return { ok: true, viewId: opened.viewId, panelId: opened.panelId };
       }
     })
   );
