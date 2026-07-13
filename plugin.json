@@ -13,7 +13,10 @@
   },
   "entry": "main.js",
   "implements": [
-    "soksak-browser-spec@1"
+    {
+      "id": "soksak-spec-plugin-browser",
+      "version": "0.0.1"
+    }
   ],
   "permissions": [
     "ui",
