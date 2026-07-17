@@ -2,14 +2,13 @@
   "spec": "soksak-spec-plugin@0.0.1",
   "id": "soksak-plugin-browser-native",
   "name": {
-    "ko": "브라우저 (Webview)",
+    "ko": "\ube0c\ub77c\uc6b0\uc800 (Webview)",
     "en": "Browser (Webview)"
   },
   "version": "0.0.1",
-  "repo": "https://github.com/soksak-ai/soksak-plugin-browser-native.git",
   "description": {
-    "ko": "콘텐츠 뷰로 브라우저를 렌더 — 코어 네이티브 child webview(OS 웹뷰) 를 직접 구동. URL 바·즐겨찾기·북마크·devtools 토글 내장.",
-    "en": "Renders the browser as a content view — drives the core native child webview (OS webview) directly. Built-in URL bar, bookmarks, and devtools toggle."
+    "ko": "\ucf58\ud150\uce20 \ubdf0\ub85c \ube0c\ub77c\uc6b0\uc800\ub97c \ub80c\ub354 \u2014 \ucf54\uc5b4 \ub124\uc774\ud2f0\ube0c child webview(OS \uc6f9\ubdf0) \ub97c \uc9c1\uc811 \uad6c\ub3d9. URL \ubc14\u00b7\uc990\uaca8\ucc3e\uae30\u00b7\ubd81\ub9c8\ud06c\u00b7devtools \ud1a0\uae00 \ub0b4\uc7a5.",
+    "en": "Renders the browser as a content view \u2014 drives the core native child webview (OS webview) directly. Built-in URL bar, bookmarks, and devtools toggle."
   },
   "entry": "main.js",
   "implements": [
@@ -32,11 +31,11 @@
       "type": "string",
       "default": "about:blank",
       "title": {
-        "ko": "시작 URL",
+        "ko": "\uc2dc\uc791 URL",
         "en": "Start URL"
       },
       "description": {
-        "ko": "새 브라우저 탭이 처음 여는 주소.",
+        "ko": "\uc0c8 \ube0c\ub77c\uc6b0\uc800 \ud0ed\uc774 \ucc98\uc74c \uc5ec\ub294 \uc8fc\uc18c.",
         "en": "Address a new browser tab opens to."
       }
     },
@@ -49,21 +48,21 @@
       ],
       "enumLabels": [
         {
-          "ko": "새 탭",
+          "ko": "\uc0c8 \ud0ed",
           "en": "New tab"
         },
         {
-          "ko": "새 창",
+          "ko": "\uc0c8 \ucc3d",
           "en": "New window"
         }
       ],
       "default": "tab",
       "title": {
-        "ko": "새 링크 열기",
+        "ko": "\uc0c8 \ub9c1\ud06c \uc5f4\uae30",
         "en": "Open new links in"
       },
       "description": {
-        "ko": "target=_blank / window.open 새 링크를 새 탭(앱 내 브라우저 뷰) 또는 독립 OS 창으로 연다.",
+        "ko": "target=_blank / window.open \uc0c8 \ub9c1\ud06c\ub97c \uc0c8 \ud0ed(\uc571 \ub0b4 \ube0c\ub77c\uc6b0\uc800 \ubdf0) \ub610\ub294 \ub3c5\ub9bd OS \ucc3d\uc73c\ub85c \uc5f0\ub2e4.",
         "en": "Open target=_blank / window.open links as a new tab (in-app browser view) or an independent OS window."
       }
     }
@@ -73,10 +72,10 @@
       {
         "id": "content",
         "title": {
-          "ko": "브라우저 (Webview)",
+          "ko": "\ube0c\ub77c\uc6b0\uc800 (Webview)",
           "en": "Browser (Webview)"
         },
-        "icon": "🌐",
+        "icon": "\ud83c\udf10",
         "placements": [
           "content"
         ],
@@ -93,7 +92,7 @@
       {
         "id": "browser",
         "path": {
-          "ko": "브라우저",
+          "ko": "\ube0c\ub77c\uc6b0\uc800",
           "en": "Browser"
         },
         "title": {
@@ -108,63 +107,63 @@
       {
         "name": "ping",
         "title": {
-          "ko": "플러그인 적재/버전 확인(E2E)",
+          "ko": "\ud50c\ub7ec\uadf8\uc778 \uc801\uc7ac/\ubc84\uc804 \ud655\uc778(E2E)",
           "en": "Ping (load/version check)"
         }
       },
       {
         "name": "navigate",
         "title": {
-          "ko": "URL 이동",
+          "ko": "URL \uc774\ub3d9",
           "en": "Navigate to URL"
         }
       },
       {
         "name": "back",
         "title": {
-          "ko": "이전 페이지",
+          "ko": "\uc774\uc804 \ud398\uc774\uc9c0",
           "en": "Go Back"
         }
       },
       {
         "name": "forward",
         "title": {
-          "ko": "다음 페이지",
+          "ko": "\ub2e4\uc74c \ud398\uc774\uc9c0",
           "en": "Go Forward"
         }
       },
       {
         "name": "reload",
         "title": {
-          "ko": "새로고침",
+          "ko": "\uc0c8\ub85c\uace0\uce68",
           "en": "Reload"
         }
       },
       {
         "name": "open",
         "title": {
-          "ko": "브라우저 뷰 열기",
+          "ko": "\ube0c\ub77c\uc6b0\uc800 \ubdf0 \uc5f4\uae30",
           "en": "Open browser view"
         }
       },
       {
         "name": "devtools",
         "title": {
-          "ko": "개발자 도구 토글",
+          "ko": "\uac1c\ubc1c\uc790 \ub3c4\uad6c \ud1a0\uae00",
           "en": "Toggle devtools"
         }
       },
       {
         "name": "list",
         "title": {
-          "ko": "브라우저 webview 목록",
+          "ko": "\ube0c\ub77c\uc6b0\uc800 webview \ubaa9\ub85d",
           "en": "List browser webviews"
         }
       },
       {
         "name": "eval",
         "title": {
-          "ko": "JS 실행",
+          "ko": "JS \uc2e4\ud589",
           "en": "Evaluate JS"
         },
         "danger": "inject"
@@ -172,28 +171,28 @@
       {
         "name": "dom.text",
         "title": {
-          "ko": "DOM 텍스트 읽기",
+          "ko": "DOM \ud14d\uc2a4\ud2b8 \uc77d\uae30",
           "en": "Get DOM text"
         }
       },
       {
         "name": "dom.html",
         "title": {
-          "ko": "DOM HTML 읽기",
+          "ko": "DOM HTML \uc77d\uae30",
           "en": "Get DOM HTML"
         }
       },
       {
         "name": "dom.query",
         "title": {
-          "ko": "DOM 요소 조회",
+          "ko": "DOM \uc694\uc18c \uc870\ud68c",
           "en": "Query DOM elements"
         }
       },
       {
         "name": "dom.click",
         "title": {
-          "ko": "DOM 클릭",
+          "ko": "DOM \ud074\ub9ad",
           "en": "Click DOM element"
         },
         "danger": "inject"
@@ -201,7 +200,7 @@
       {
         "name": "dom.fill",
         "title": {
-          "ko": "DOM 입력 채우기",
+          "ko": "DOM \uc785\ub825 \ucc44\uc6b0\uae30",
           "en": "Fill DOM input"
         },
         "danger": "inject"
@@ -209,7 +208,7 @@
       {
         "name": "dom.submit",
         "title": {
-          "ko": "폼 제출",
+          "ko": "\ud3fc \uc81c\ucd9c",
           "en": "Submit form"
         },
         "danger": "inject"
@@ -217,14 +216,14 @@
       {
         "name": "dom.wait-for",
         "title": {
-          "ko": "요소 대기",
+          "ko": "\uc694\uc18c \ub300\uae30",
           "en": "Wait for element"
         }
       },
       {
         "name": "media.sniff",
         "title": {
-          "ko": "미디어 스니프",
+          "ko": "\ubbf8\ub514\uc5b4 \uc2a4\ub2c8\ud504",
           "en": "Sniff media URLs"
         },
         "danger": "inject"
@@ -232,7 +231,7 @@
       {
         "name": "media.extract",
         "title": {
-          "ko": "미디어 추출(오프스크린)",
+          "ko": "\ubbf8\ub514\uc5b4 \ucd94\ucd9c(\uc624\ud504\uc2a4\ud06c\ub9b0)",
           "en": "Extract media (offscreen)"
         },
         "danger": "inject"
@@ -240,7 +239,7 @@
       {
         "name": "home",
         "title": {
-          "ko": "홈",
+          "ko": "\ud648",
           "en": "Home"
         }
       }
@@ -249,49 +248,49 @@
       {
         "id": "urlbar",
         "description": {
-          "ko": "URL 입력창",
+          "ko": "URL \uc785\ub825\ucc3d",
           "en": "URL input bar"
         }
       },
       {
         "id": "back",
         "description": {
-          "ko": "이전 버튼",
+          "ko": "\uc774\uc804 \ubc84\ud2bc",
           "en": "Back button"
         }
       },
       {
         "id": "forward",
         "description": {
-          "ko": "다음 버튼",
+          "ko": "\ub2e4\uc74c \ubc84\ud2bc",
           "en": "Forward button"
         }
       },
       {
         "id": "reload",
         "description": {
-          "ko": "새로고침 버튼",
+          "ko": "\uc0c8\ub85c\uace0\uce68 \ubc84\ud2bc",
           "en": "Reload button"
         }
       },
       {
         "id": "devtools",
         "description": {
-          "ko": "개발자 도구 버튼",
+          "ko": "\uac1c\ubc1c\uc790 \ub3c4\uad6c \ubc84\ud2bc",
           "en": "Developer tools button"
         }
       },
       {
         "id": "freeze",
         "description": {
-          "ko": "디바이더 드래그 중 시각 연속 스탠드인(freeze-frame) 오버레이",
+          "ko": "\ub514\ubc14\uc774\ub354 \ub4dc\ub798\uadf8 \uc911 \uc2dc\uac01 \uc5f0\uc18d \uc2a4\ud0e0\ub4dc\uc778(freeze-frame) \uc624\ubc84\ub808\uc774",
           "en": "Visual-continuity stand-in (freeze-frame) overlay during divider drag"
         }
       },
       {
         "id": "home",
         "description": {
-          "ko": "홈",
+          "ko": "\ud648",
           "en": "Home"
         }
       }
