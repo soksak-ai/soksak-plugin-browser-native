@@ -13976,7 +13976,9 @@ var GLOBAL_CSS = `
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  /* \uD234\uBC14 \uD589 \uACC4\uC57D(PLUGIN-CONTRACT \xA7Toolbar) \u2014 \uCE58\uC218\uB294 \uD14C\uB9C8 \uD1A0\uD070 \uC18C\uC720, \uC790\uCCB4 \uC7AC\uCC3D\uC870 \uAE08\uC9C0. */
+  height: var(--toolbar-h, 28px);
+  padding: 0 var(--toolbar-pad-x, 8px);
   background: var(--bg, #1e1e1e);
   border-bottom: 1px solid var(--bd-soft, #2a2a2a);
   -webkit-user-select: none;
