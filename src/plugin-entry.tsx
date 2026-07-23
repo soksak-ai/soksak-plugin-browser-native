@@ -35,6 +35,8 @@ export default {
   activate(ctx: PluginContext) {
     const app = ctx.app;
     injectStyles();
+    // 뷰별 페이지 줌 배율(관찰 확대 — 메모리 수명).
+    const pageZoom = new Map<string, number>();
 
     if (app.ui?.registerView) {
       ctx.subscriptions.push(
@@ -59,6 +61,22 @@ export default {
           },
           unmount(container: HTMLElement) {
             unmountContainer(container);
+          },
+          zoom(_container: HTMLElement, vctx: PluginViewContext, action: "in" | "out" | "reset") {
+            // 페이지 줌(§Zoom — 브라우저 관례): 자기 child 라벨에 뷰 배율을 건다.
+            // 유효 배율 합성(창 줌 ×)은 코어(webview_zoom_view)가 소유한다.
+            const viewId = vctx.viewId;
+            if (!viewId || !app.webview) return;
+            const cur = pageZoom.get(viewId) ?? 1;
+            const next =
+              action === "reset"
+                ? 1
+                : Math.max(
+                    0.25,
+                    Math.min(4, Math.round((cur + (action === "in" ? 0.1 : -0.1)) * 100) / 100),
+                  );
+            pageZoom.set(viewId, next);
+            void app.webview.zoom(app.webview.label(viewId), next).catch(() => {});
           },
         }),
       );

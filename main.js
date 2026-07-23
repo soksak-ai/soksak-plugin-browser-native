@@ -14097,6 +14097,7 @@ var plugin_entry_default = {
   activate(ctx) {
     const app = ctx.app;
     injectStyles();
+    const pageZoom = /* @__PURE__ */ new Map();
     if (app.ui?.registerView) {
       ctx.subscriptions.push(
         app.ui.registerView("content", {
@@ -14111,6 +14112,18 @@ var plugin_entry_default = {
           },
           unmount(container) {
             unmountContainer(container);
+          },
+          zoom(_container, vctx, action) {
+            const viewId = vctx.viewId;
+            if (!viewId || !app.webview) return;
+            const cur = pageZoom.get(viewId) ?? 1;
+            const next = action === "reset" ? 1 : Math.max(
+              0.25,
+              Math.min(4, Math.round((cur + (action === "in" ? 0.1 : -0.1)) * 100) / 100)
+            );
+            pageZoom.set(viewId, next);
+            void app.webview.zoom(app.webview.label(viewId), next).catch(() => {
+            });
           }
         })
       );
