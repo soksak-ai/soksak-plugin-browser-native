@@ -11,19 +11,6 @@ export const GLOBAL_CSS = `
   color: var(--fg, #ddd);
   font: 12px var(--app-font, system-ui, sans-serif);
 }
-.bv-bar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  /* 툴바 행 계약(PLUGIN-CONTRACT §Toolbar) — 치수는 테마 토큰 소유, 자체 재창조 금지. */
-  height: var(--toolbar-h, 28px);
-  padding: 0 var(--toolbar-pad-x, 8px);
-  background: var(--bg, #1e1e1e);
-  border-bottom: 1px solid var(--bd-soft, #2a2a2a);
-  -webkit-user-select: none;
-  user-select: none;
-}
 .bv-btn {
   flex: 0 0 auto;
   display: flex;
