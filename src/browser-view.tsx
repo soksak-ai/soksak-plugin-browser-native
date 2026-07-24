@@ -323,6 +323,11 @@ function BrowserViewImpl({
     // 1회 재스냅한다 — 활성 뷰=온스크린, 비활성 뷰=오프스크린(파킹). 폴링/추종 아님: 커밋 후 신호에
     // 대한 단일 반응이라 클릭에 즉시 따라온다.
     const off = app.events.on("layout.reflow", () => {
+      // 모션 위상 중엔 재스냅 금지 — reflow 는 페인트 전(useLayoutEffect)에 오므로 여기서
+      // 읽는 rect 는 FLIP translate 미반영 최종 좌표다. 위상 중 그 좌표로 강제 스냅하면
+      // child 가 t0 에 목적지로 텔레포트해 코어의 파라메트릭 CA 구동(같은 곡선 병렬 주행)이
+      // final→final 무효가 된다(실측). 위상 종료 스냅은 gesture-end 핸들러가 이미 보증한다.
+      if (gestureRef.current) return;
       lastRectRef.current = "";
       syncBounds(true);
     });

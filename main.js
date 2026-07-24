@@ -13759,6 +13759,7 @@ function BrowserViewImpl({
   (0, import_react.useEffect)(() => {
     if (!webview || !label) return;
     const off = app.events.on("layout.reflow", () => {
+      if (gestureRef.current) return;
       lastRectRef.current = "";
       syncBounds(true);
     });
