@@ -81,6 +81,10 @@ function BrowserViewImpl({
   const areaRef = useRef<HTMLDivElement>(null);
   const openedRef = useRef(false);
   const lastRectRef = useRef("");
+  // child 생존 자가치유 — openedRef 가 참인데 실물 webview 가 없으면(레지스트리 대조) 재개방한다.
+  // 근거(실사고): open 이 전제조건 미비로 조기 반환하거나 실물이 외부 사정으로 닫히면, 마운트는
+  // 열림을 믿은 채 빈 홀만 남는다. 신호는 활성 복귀 에지에서만 검사한다(폴링 아님).
+  const [openEpoch, setOpenEpoch] = useState(0);
   // 직전 rAF 실측(선행 외삽용) — 송신 여부와 무관하게 매 측정마다 갱신한다(속도 = 표시 타임라인).
   const prevSampleRef = useRef<{ x: number; y: number } | null>(null);
   // 라이브 리사이즈(가장자리 드래그) 진행 여부 — 코어 app.events("window.live-resize") 게이트.
@@ -242,7 +246,23 @@ function BrowserViewImpl({
       void webview.close(label).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [label]);
+  }, [label, openEpoch]);
+
+  // 활성 복귀 에지의 생존 검증 — 열림을 믿는 상태와 실물(webview.list)이 어긋나면 epoch 를
+  // 올려 open 이펙트를 재구동한다(cleanup 이 잔재를 회수하고 새로 연다). 멱등: 정상이면 무동작.
+  const verifyAlive = useCallback(() => {
+    if (!label || !webview) return;
+    void webview
+      .list("b-")
+      .then((labels) => {
+        if (!openedRef.current) return;
+        if (!labels.includes(label)) {
+          openedRef.current = false;
+          setOpenEpoch((e) => e + 1);
+        }
+      })
+      .catch(() => {});
+  }, [label, webview]);
 
   // bounds 구동원 — 네이티브 webview 가 DOM 슬롯(.bv-area)을 추종한다. DOM 엔 "위치 이동"
   // 이벤트가 없어(ResizeObserver 는 크기만) 추종에 rAF 가 필요하지만, 영구 60fps rAF 폴링은
@@ -321,6 +341,7 @@ function BrowserViewImpl({
       const q = p as { viewId?: string; veiled?: boolean };
       if (q.viewId !== ctx.viewId || !label || !webview) return;
       void webview.visible(label, !q.veiled, false).catch(() => {});
+      if (!q.veiled) verifyAlive();
     });
 
     arm(); // 초기 정착 1회.
@@ -358,6 +379,7 @@ function BrowserViewImpl({
       const q = p as { viewId?: string; parked?: boolean };
       if (q.viewId !== ctx.viewId || q.parked) return;
       lastRectRef.current = "";
+      verifyAlive();
       requestAnimationFrame(() => syncBounds(true));
     });
     return () => {
