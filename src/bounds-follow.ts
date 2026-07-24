@@ -47,3 +47,20 @@ export function leadPosition(i: {
   if (Math.abs(dx) > i.teleportPx || Math.abs(dy) > i.teleportPx) return i.cur;
   return { x: i.cur.x + dx, y: i.cur.y + dy };
 }
+
+/** move-위상 freeze-frame 판정(순수) — 활강 중 네이티브 child 를 스탠드인 이미지로 대체할지.
+ * freeze 는 오직 "move 만 활성 + 신선한 스냅 보유"일 때다. resize 가 끼면(디바이더·폭 드래그,
+ * 주행 중 개입 포함) 절대 얼리지 않는다 — 크기가 변하는 표면의 정지 사진은 콘텐츠 박제다
+ * (과거 freeze-frame 이 제거된 이유). kinds 미탑재(구 코어)도 얼리지 않는다(보수 기본값). */
+export function freezeDecision(i: {
+  active: boolean;
+  kinds: string[] | undefined;
+  snapAgeMs: number | null;
+  maxAgeMs: number;
+}): "freeze" | "live" {
+  if (!i.active) return "live";
+  if (!i.kinds || i.kinds.length === 0) return "live";
+  if (i.kinds.some((k) => k !== "move")) return "live";
+  if (i.snapAgeMs == null || i.snapAgeMs > i.maxAgeMs) return "live";
+  return "freeze";
+}

@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { createBrowserToolbar } from "soksak-kit-browser-common";
 import type { BrowserToolbar } from "soksak-kit-browser-common";
 import type { PluginApi, PluginViewContext } from "./host";
-import { boundsCommitDecision, followShouldContinue, leadPosition } from "./bounds-follow";
+import { boundsCommitDecision, followShouldContinue, freezeDecision, leadPosition } from "./bounds-follow";
 import { loadStatus } from "./view-status";
 import { t } from "./i18n";
 import { registerLabel, unregisterLabel, setPendingUrl, takePendingUrl } from "./commands";
@@ -21,6 +21,7 @@ import { registerLabel, unregisterLabel, setPendingUrl, takePendingUrl } from ".
 // 드래그(라이브 리사이즈) 중 네이티브 webview 재배치 상한. WKWebView set_size 는 비싸서
 // 매 프레임(60~120Hz) 호출하면 OS 자체 라이브 리사이즈와 겹쳐 CPU 가 폭발한다 → ~30Hz 로
 // 제한하고 드래그 끝에 정확한 최종 rect 로 1회 스냅한다(시각 추종은 유지).
+const FREEZE_SNAP_MAX_AGE_MS = 120_000; // 정착 스냅 신선도 상한 — 넘으면 freeze 대신 라이브 추종
 const LIVE_THROTTLE_MS = 32;
 // 슬롯 rect 가 이 프레임 수만큼 연속 무변화면(=드래그 아님) 추종 루프를 멈춘다(idle 폴링 0).
 const STABLE_STOP_FRAMES = 4;
@@ -83,6 +84,13 @@ function BrowserViewImpl({
   const lastRectRef = useRef("");
   // 직전 rAF 실측(선행 외삽용) — 송신 여부와 무관하게 매 측정마다 갱신한다(속도 = 표시 타임라인).
   const prevSampleRef = useRef<{ x: number; y: number } | null>(null);
+  // move-위상 freeze-frame — 활강 동안 child 를 숨기고 스탠드인 <img>(DOM)가 셀과 함께
+  // 활강한다(표면이 DOM 이 되는 구간 = 기하 일치가 정의상 성립). 스냅은 정착 에지에서
+  // 미리 캡처해 둔다(캡처 지연 0 으로 시작 에지 즉시 동결). bounds 커밋은 유예하지 않는다.
+  const freshSnapRef = useRef<{ url: string; t: number } | null>(null);
+  const snapInFlightRef = useRef(false);
+  const frozenRef = useRef(false);
+  const freezeImgRef = useRef<HTMLImageElement | null>(null);
   // 라이브 리사이즈(가장자리 드래그) 진행 여부 — 코어 app.events("window.live-resize") 게이트.
   const liveRef = useRef(false);
   // 디바이더 드래그(layout.resize-gesture) 진행 여부 — 드래그 내내 추종 루프를 살려두는 게이트.
@@ -203,6 +211,63 @@ function BrowserViewImpl({
     [webview, label],
   );
 
+  // 정착 스냅 갱신 — 추종 루프 자가종료 에지에서만 부른다(이벤트 에지, 폴링 아님).
+  // 다음 move-위상의 freeze 스탠드인 재료. 모션·비가시 중엔 찍지 않는다.
+  const captureFresh = useCallback(() => {
+    const el = areaRef.current;
+    if (!el || !openedRef.current || !webview || !label) return;
+    if (gestureRef.current || liveRef.current || snapInFlightRef.current) return;
+    const r = el.getBoundingClientRect();
+    const x = Math.ceil(r.left);
+    const y = Math.ceil(r.top);
+    const w = Math.floor(r.right) - x;
+    const h = Math.floor(r.bottom) - y;
+    if (w < 2 || h < 2) return;
+    snapInFlightRef.current = true;
+    void webview
+      .captureRegion({ x, y, w, h })
+      .then((url) => {
+        freshSnapRef.current = { url, t: performance.now() };
+        el.dataset.bvSnapAt = String(Math.round(performance.now())); // 관측면(ui.hit)
+      })
+      .catch(() => {})
+      .finally(() => {
+        snapInFlightRef.current = false;
+      });
+  }, [webview, label]);
+
+  // 동결 적용/해제 — 적용: 스탠드인 <img> 를 셀에 세우고 child 숨김(추종·커밋은 계속 흐른다).
+  // 해제: 정확 스냅 → child 복귀 → 한 박자 뒤 img 제거(복귀 프레임 아래 깔린 채 걷어 깜빡임 0).
+  const applyFreeze = useCallback(
+    (on: boolean) => {
+      const el = areaRef.current;
+      if (!el || !webview || !label) return;
+      if (on && !frozenRef.current) {
+        const snap = freshSnapRef.current;
+        if (!snap) return;
+        const img = document.createElement("img");
+        img.className = "bv-freeze-frame";
+        img.src = snap.url;
+        img.style.cssText =
+          "position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none;z-index:3;";
+        el.appendChild(img);
+        freezeImgRef.current = img;
+        frozenRef.current = true;
+        el.dataset.bvFrozen = "1"; // 관측면(ui.hit)
+        void webview.visible(label, false).catch(() => {});
+      } else if (!on && frozenRef.current) {
+        frozenRef.current = false;
+        el.dataset.bvFrozen = "0";
+        syncBounds(true);
+        void webview.visible(label, true).catch(() => {});
+        const img = freezeImgRef.current;
+        freezeImgRef.current = null;
+        if (img) window.setTimeout(() => img.remove(), 90);
+      }
+    },
+    [webview, label, syncBounds],
+  );
+
   // 최초 1회 webview 생성 + 언마운트 정리.
   // 비동기 open 전에 언마운트 → closed 플래그로 늦은 생성 즉시 회수(고아 방지).
   useEffect(() => {
@@ -274,6 +339,9 @@ function BrowserViewImpl({
         })
       ) {
         rafId = requestAnimationFrame(tick);
+      } else {
+        // 자가종료 = 표면 정착 에지 — 다음 move-위상용 freeze 스탠드인을 여기서 갱신한다.
+        captureFresh();
       }
     };
     const arm = () => {
@@ -310,8 +378,18 @@ function BrowserViewImpl({
     // (freeze-frame 정지 사진은 폐기 — 드래그 중 콘텐츠가 박제되고, 옛 크기 스탠드인이 빈 슬롯을
     //  드러내는 잔상의 근원이었다.)
     const offGesture = app.events.on("layout.resize-gesture", (p) => {
-      const active = !!(p as { active?: boolean }).active;
+      const q = p as { active?: boolean; kinds?: string[] };
+      const active = !!q.active;
       gestureRef.current = active;
+      // move-위상이면 freeze 스탠드인(순수 판정 freezeDecision) — resize 가 끼는 순간 해동.
+      const snap = freshSnapRef.current;
+      const mode = freezeDecision({
+        active,
+        kinds: q.kinds,
+        snapAgeMs: snap ? performance.now() - snap.t : null,
+        maxAgeMs: FREEZE_SNAP_MAX_AGE_MS,
+      });
+      applyFreeze(mode === "freeze");
       if (!active) syncBounds(true);
       arm();
     });
@@ -326,6 +404,9 @@ function BrowserViewImpl({
       offLive.dispose();
       offGesture.dispose();
       if (rafId) cancelAnimationFrame(rafId);
+      freezeImgRef.current?.remove();
+      freezeImgRef.current = null;
+      frozenRef.current = false;
     };
   }, [syncBounds, app, webview]);
 
