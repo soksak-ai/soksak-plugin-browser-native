@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boundsCommitDecision, followShouldContinue } from "./bounds-follow";
+import { boundsCommitDecision, followShouldContinue, freezeDecision, leadPosition } from "./bounds-follow";
 
 // 분할 divider 드래그 실시간 리사이즈 계약 — freeze-frame(드래그 중 커밋 유예+정지 사진) 회귀 방지.
 // 실측 RED: 드랍 전 캡처에서 양 브라우저 폭이 드래그 시작 값에 박제되고, 옛 크기 스탠드인이
@@ -52,5 +52,50 @@ describe("boundsCommitDecision", () => {
         force: true, live: true, gesture: false, sameRect: false, msSinceLast: 10, throttleMs: 33,
       }),
     ).toBe("send");
+  });
+});
+
+describe("leadPosition", () => {
+  it("모션 위상 중 등속 이동은 1프레임 선행한다(표시 지연 상쇄)", () => {
+    expect(
+      leadPosition({ prev: { x: 100, y: 50 }, cur: { x: 130, y: 50 }, moving: true, teleportPx: 200 }),
+    ).toEqual({ x: 160, y: 50 });
+  });
+  it("모션 위상이 아니면 실측 그대로다(정지 외삽 = 지터 증폭)", () => {
+    expect(
+      leadPosition({ prev: { x: 100, y: 50 }, cur: { x: 130, y: 50 }, moving: false, teleportPx: 200 }),
+    ).toEqual({ x: 130, y: 50 });
+  });
+  it("직전 샘플이 없으면 실측 그대로다", () => {
+    expect(leadPosition({ prev: null, cur: { x: 130, y: 50 }, moving: true, teleportPx: 200 })).toEqual({
+      x: 130, y: 50,
+    });
+  });
+  it("순간이동(재배치·재마운트) 델타는 외삽하지 않는다", () => {
+    expect(
+      leadPosition({ prev: { x: 100, y: 50 }, cur: { x: 600, y: 50 }, moving: true, teleportPx: 200 }),
+    ).toEqual({ x: 600, y: 50 });
+  });
+});
+
+describe("freezeDecision", () => {
+  const fresh = { snapAgeMs: 1000, maxAgeMs: 120_000 };
+  it("move 만 활성 + 신선 스냅이면 freeze", () => {
+    expect(freezeDecision({ active: true, kinds: ["move"], ...fresh })).toBe("freeze");
+  });
+  it("resize 가 끼면(단독이든 주행 중 개입이든) 절대 얼리지 않는다", () => {
+    expect(freezeDecision({ active: true, kinds: ["resize"], ...fresh })).toBe("live");
+    expect(freezeDecision({ active: true, kinds: ["move", "resize"], ...fresh })).toBe("live");
+  });
+  it("kinds 미탑재(구 코어)·빈 kinds 는 얼리지 않는다(보수 기본값)", () => {
+    expect(freezeDecision({ active: true, kinds: undefined, ...fresh })).toBe("live");
+    expect(freezeDecision({ active: true, kinds: [], ...fresh })).toBe("live");
+  });
+  it("스냅 부재·낡은 스냅이면 얼리지 않는다(폴백 = 라이브 추종)", () => {
+    expect(freezeDecision({ active: true, kinds: ["move"], snapAgeMs: null, maxAgeMs: 120_000 })).toBe("live");
+    expect(freezeDecision({ active: true, kinds: ["move"], snapAgeMs: 300_000, maxAgeMs: 120_000 })).toBe("live");
+  });
+  it("비활성이면 live", () => {
+    expect(freezeDecision({ active: false, kinds: ["move"], ...fresh })).toBe("live");
   });
 });

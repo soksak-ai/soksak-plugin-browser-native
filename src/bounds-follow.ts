@@ -28,3 +28,39 @@ export function boundsCommitDecision(i: {
   if (!i.force && i.live && i.msSinceLast < i.throttleMs) return "pending";
   return "send";
 }
+
+/** 1프레임 선행 외삽(순수) — 모션 위상 중 송신 위치를 다음 표시 프레임의 예상 위치로 민다.
+ * rAF 가 읽는 rect 는 "지금 화면 위치"고 setFrame 은 다음 리프레시에 그려지므로, 표시 시점엔
+ * DOM 이 정확히 한 프레임 앞서 있다 — 격차 = 속도×1프레임(강조바는 마우스 속도라 지각 밖,
+ * FLIP 주행은 프레임당 수십 px 라 벌어져 보인다). 연속 두 샘플의 델타를 한 번 더 밀어 상쇄한다.
+ * 정지·직전샘플 부재·teleport(재배치 점프) 는 실측 그대로 — 외삽은 등속 구간에서만 이득이다. */
+export function leadPosition(i: {
+  prev: { x: number; y: number } | null;
+  cur: { x: number; y: number };
+  moving: boolean;
+  teleportPx: number;
+}): { x: number; y: number } {
+  if (!i.moving || !i.prev) return i.cur;
+  const dx = i.cur.x - i.prev.x;
+  const dy = i.cur.y - i.prev.y;
+  if (dx === 0 && dy === 0) return i.cur;
+  if (Math.abs(dx) > i.teleportPx || Math.abs(dy) > i.teleportPx) return i.cur;
+  return { x: i.cur.x + dx, y: i.cur.y + dy };
+}
+
+/** move-위상 freeze-frame 판정(순수) — 활강 중 네이티브 child 를 스탠드인 이미지로 대체할지.
+ * freeze 는 오직 "move 만 활성 + 신선한 스냅 보유"일 때다. resize 가 끼면(디바이더·폭 드래그,
+ * 주행 중 개입 포함) 절대 얼리지 않는다 — 크기가 변하는 표면의 정지 사진은 콘텐츠 박제다
+ * (과거 freeze-frame 이 제거된 이유). kinds 미탑재(구 코어)도 얼리지 않는다(보수 기본값). */
+export function freezeDecision(i: {
+  active: boolean;
+  kinds: string[] | undefined;
+  snapAgeMs: number | null;
+  maxAgeMs: number;
+}): "freeze" | "live" {
+  if (!i.active) return "live";
+  if (!i.kinds || i.kinds.length === 0) return "live";
+  if (i.kinds.some((k) => k !== "move")) return "live";
+  if (i.snapAgeMs == null || i.snapAgeMs > i.maxAgeMs) return "live";
+  return "freeze";
+}
