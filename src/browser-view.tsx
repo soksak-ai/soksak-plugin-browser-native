@@ -87,7 +87,7 @@ function BrowserViewImpl({
   // move-위상 freeze-frame — 활강 동안 child 를 숨기고 스탠드인 <img>(DOM)가 셀과 함께
   // 활강한다(표면이 DOM 이 되는 구간 = 기하 일치가 정의상 성립). 스냅은 정착 에지에서
   // 미리 캡처해 둔다(캡처 지연 0 으로 시작 에지 즉시 동결). bounds 커밋은 유예하지 않는다.
-  const freshSnapRef = useRef<{ url: string; t: number } | null>(null);
+  const freshSnapRef = useRef<{ img: HTMLImageElement; t: number } | null>(null);
   const snapInFlightRef = useRef(false);
   const frozenRef = useRef(false);
   const freezeImgRef = useRef<HTMLImageElement | null>(null);
@@ -226,8 +226,13 @@ function BrowserViewImpl({
     snapInFlightRef.current = true;
     void webview
       .captureRegion({ x, y, w, h })
-      .then((url) => {
-        freshSnapRef.current = { url, t: performance.now() };
+      .then(async (url) => {
+        // 여기서 미리 디코드까지 끝내 둔다 — 동결 순간의 디코드 지연(1~2프레임)이 "child 숨김이
+        // img 페인트보다 먼저 착지 → 배경 번쩍"의 재료였다. 디코드된 요소는 append 즉시 그려진다.
+        const im = new Image();
+        im.src = url;
+        await im.decode();
+        freshSnapRef.current = { img: im, t: performance.now() };
         el.dataset.bvSnapAt = String(Math.round(performance.now())); // 관측면(ui.hit)
       })
       .catch(() => {})
@@ -245,16 +250,23 @@ function BrowserViewImpl({
       if (on && !frozenRef.current) {
         const snap = freshSnapRef.current;
         if (!snap) return;
-        const img = document.createElement("img");
+        const img = snap.img; // 정착 에지에서 디코드 완료 — append 즉시 페인트
         img.className = "bv-freeze-frame";
-        img.src = snap.url;
         img.style.cssText =
           "position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none;z-index:3;";
         el.appendChild(img);
         freezeImgRef.current = img;
         frozenRef.current = true;
         el.dataset.bvFrozen = "1"; // 관측면(ui.hit)
-        void webview.visible(label, false).catch(() => {});
+        // child 숨김은 img 첫 페인트가 커밋된 다음 프레임에 — 반대 순서(먼저 숨김)는 홀이
+        // 투명한 채 1~2프레임 배경을 노출한다(시작 직전 깜빡의 근원). img 가 child 를 덮은
+        // 뒤의 한 프레임 동시 존재는 무해하다(같은 내용, 같은 자리).
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            if (frozenRef.current && freezeImgRef.current === img)
+              void webview.visible(label, false).catch(() => {});
+          }),
+        );
       } else if (!on && frozenRef.current) {
         frozenRef.current = false;
         el.dataset.bvFrozen = "0";
