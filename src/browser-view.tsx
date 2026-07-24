@@ -12,7 +12,6 @@ import { createBrowserToolbar } from "soksak-kit-browser-common";
 import type { BrowserToolbar } from "soksak-kit-browser-common";
 import type { PluginApi, PluginViewContext } from "./host";
 import { boundsCommitDecision, followShouldContinue, leadPosition } from "./bounds-follow";
-import { createMoveFreeze, type MoveFreeze } from "soksak-kit-browser-common";
 import { loadStatus } from "./view-status";
 import { t } from "./i18n";
 import { registerLabel, unregisterLabel, setPendingUrl, takePendingUrl } from "./commands";
@@ -84,9 +83,6 @@ function BrowserViewImpl({
   const lastRectRef = useRef("");
   // 직전 rAF 실측(선행 외삽용) — 송신 여부와 무관하게 매 측정마다 갱신한다(속도 = 표시 타임라인).
   const prevSampleRef = useRef<{ x: number; y: number } | null>(null);
-  // move-위상 freeze-frame — 킷(soksak-kit-browser-common) 단일 구현의 소비자. 활강 동안
-  // child 를 숨기고 스탠드인 <img>(DOM)가 셀과 함께 활강한다. bounds 커밋은 유예하지 않는다.
-  const freezeRef = useRef<MoveFreeze | null>(null);
   // 라이브 리사이즈(가장자리 드래그) 진행 여부 — 코어 app.events("window.live-resize") 게이트.
   const liveRef = useRef(false);
   // 디바이더 드래그(layout.resize-gesture) 진행 여부 — 드래그 내내 추종 루프를 살려두는 게이트.
@@ -261,19 +257,6 @@ function BrowserViewImpl({
   useEffect(() => {
     const el = areaRef.current;
     if (!el) return;
-    freezeRef.current = createMoveFreeze({
-      getEl: () => areaRef.current,
-      capture: (r) => {
-        if (!webview) return Promise.reject(new Error("webview API 없음"));
-        return webview.captureRegion(r);
-      },
-      setSurfaceVisible: (v) => {
-        if (label && webview) void webview.visible(label, v).catch(() => {});
-      },
-      snapExact: () => void syncBounds(true),
-      canCapture: () => openedRef.current && !gestureRef.current && !liveRef.current,
-    });
-
     let rafId = 0;
     let stable = 0;
     const tick = () => {
@@ -290,9 +273,6 @@ function BrowserViewImpl({
         })
       ) {
         rafId = requestAnimationFrame(tick);
-      } else {
-        // 자가종료 = 표면 정착 에지 — 다음 move-위상용 freeze 스탠드인을 여기서 갱신한다.
-        freezeRef.current?.captureFresh();
       }
     };
     const arm = () => {
@@ -332,10 +312,15 @@ function BrowserViewImpl({
       const q = p as { active?: boolean; kinds?: string[] };
       const active = !!q.active;
       gestureRef.current = active;
-      // move-위상 동결·해동은 킷 컨트롤러가 소유(resize 가 끼는 순간 해동 포함).
-      freezeRef.current?.onMotion(q);
       if (!active) syncBounds(true);
       arm();
+    });
+    // 코어 슬롯 동결(§4.6)의 표면 가림 릴레이 — 스탠드인이 선 동안만 child 를 숨긴다.
+    // 복귀는 표현 전용(focus:false) — 사용자의 포커스 결정을 탈취하지 않는다.
+    const offVeil = app.events.on("view.veiled", (p) => {
+      const q = p as { viewId?: string; veiled?: boolean };
+      if (q.viewId !== ctx.viewId || !label || !webview) return;
+      void webview.visible(label, !q.veiled, false).catch(() => {});
     });
 
     arm(); // 초기 정착 1회.
@@ -348,8 +333,7 @@ function BrowserViewImpl({
       offLive.dispose();
       offGesture.dispose();
       if (rafId) cancelAnimationFrame(rafId);
-      freezeRef.current?.dispose();
-      freezeRef.current = null;
+      offVeil.dispose();
     };
   }, [syncBounds, app, webview]);
 

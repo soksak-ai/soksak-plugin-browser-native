@@ -29,6 +29,6 @@ export function boundsCommitDecision(i: {
   return "send";
 }
 
-// 선행 외삽·freeze 판정은 킷(soksak-kit-browser-common)의 단일 구현을 재수출한다 —
-// 세 브라우저가 같은 코드를 소비한다(재발명 금지). 여기 남는 것은 추종 루프 고유 정책뿐.
-export { leadPosition, freezeDecision } from "soksak-kit-browser-common";
+// 선행 외삽은 킷(soksak-kit-browser-common)의 단일 구현을 재수출한다 — 세 브라우저가
+// 같은 코드를 소비한다(재발명 금지). 동결 판정·기계는 코어 슬롯 동결(§4.6)로 승격됐다.
+export { leadPosition } from "soksak-kit-browser-common";
