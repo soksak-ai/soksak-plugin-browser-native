@@ -252,12 +252,15 @@ function BrowserViewImpl({
   // 올려 open 이펙트를 재구동한다(cleanup 이 잔재를 회수하고 새로 연다). 멱등: 정상이면 무동작.
   const verifyAlive = useCallback(() => {
     if (!label || !webview) return;
-    void webview
-      .list("b-")
-      .then((labels) => {
-        // openedRef 를 가드하지 않는다 — 원 open 이 조기 실패한 마운트(믿음조차 없는 빈 홀)도
-        // 치유 대상이다. 진행 중 open 과의 경합은 이펙트의 closed 플래그가 회수한다(고아 방지).
-        if (!labels.includes(label)) {
+    // 실물 생존 표면(webview.alive) — list/visible 은 registry 기준이라 좀비(라벨 생존·실물
+    // 사망)를 건강 오판한다. openedRef 를 가드하지 않는다 — 원 open 이 조기 실패한 마운트도
+    // 치유 대상이다. 진행 중 open 과의 경합은 이펙트의 closed 플래그가 회수한다(고아 방지).
+    const probe = webview.alive
+      ? webview.alive(label)
+      : webview.list("b-").then((labels) => labels.includes(label));
+    void probe
+      .then((ok) => {
+        if (!ok) {
           openedRef.current = false;
           setOpenEpoch((e) => e + 1);
         }

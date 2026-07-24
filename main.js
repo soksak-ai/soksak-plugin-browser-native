@@ -13722,8 +13722,9 @@ function BrowserViewImpl({
   }, [label, openEpoch]);
   const verifyAlive = (0, import_react.useCallback)(() => {
     if (!label || !webview) return;
-    void webview.list("b-").then((labels) => {
-      if (!labels.includes(label)) {
+    const probe = webview.alive ? webview.alive(label) : webview.list("b-").then((labels) => labels.includes(label));
+    void probe.then((ok) => {
+      if (!ok) {
         openedRef.current = false;
         setOpenEpoch((e) => e + 1);
       }

@@ -73,6 +73,8 @@ export interface WebviewApi {
   /** 표시/숨김(탭 전환·최대화의 숨김 슬롯). */
   /** focus:false = 표현 전용 복귀(코어 슬롯 동결 해동 등) — responder 를 건드리지 않는다. */
   visible: (label: string, visible: boolean, focus?: boolean) => Promise<void>;
+  /** 실물 생존(native view 창 부착) — 구코어엔 없다(호출측이 부재를 건강으로 폴백). */
+  alive?: (label: string) => Promise<boolean>;
   /** URL 이동. */
   navigate: (label: string, url: string) => Promise<void>;
   /** 뷰-단위 페이지 줌(0.25..4.0) — 유효 배율 = 창 줌 × 이 값. */
