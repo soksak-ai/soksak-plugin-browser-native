@@ -13689,11 +13689,22 @@ function BrowserViewImpl({
     [webview, label]
   );
   (0, import_react.useEffect)(() => {
-    if (!label || !webview) return;
+    const stamp = (v) => {
+      const el0 = areaRef.current;
+      if (el0) el0.dataset.bvOpen = v;
+    };
+    if (!label || !webview) {
+      stamp(`bail:no-${!label ? "label" : "webview"}`);
+      return;
+    }
     const el = areaRef.current;
-    if (!el) return;
+    if (!el) {
+      stamp("bail:no-el");
+      return;
+    }
     let closed = false;
     const r = el.getBoundingClientRect();
+    stamp("invoking");
     webview.open(label, {
       url: localUrl,
       x: r.left,
@@ -13702,15 +13713,20 @@ function BrowserViewImpl({
       h: Math.max(1, r.height)
     }).then(() => {
       if (closed) {
+        stamp("closed-during-open");
         void webview.close(label).catch(() => {
         });
         return;
       }
+      stamp("opened");
       openedRef.current = true;
       void webview.visible(label, true).catch(() => {
       });
       syncBounds();
-    }).catch((e) => console.error("browser_open:", e));
+    }).catch((e) => {
+      stamp(`error:${String(e).slice(0, 80)}`);
+      console.error("browser_open:", e);
+    });
     registerLabel(ctx.viewId, label, () => localUrlRef.current);
     return () => {
       closed = true;

@@ -210,11 +210,24 @@ function BrowserViewImpl({
   // 최초 1회 webview 생성 + 언마운트 정리.
   // 비동기 open 전에 언마운트 → closed 플래그로 늦은 생성 즉시 회수(고아 방지).
   useEffect(() => {
-    if (!label || !webview) return;
+    // open 수명주기 관측면(el.dataset.bvOpen) — webview 콘솔이 안 보이는 환경에서 ui.hit 로
+    // 어느 단계에서 죽었는지 판독한다(실사고: open 미호출 빈 홀의 원인 판별 불가).
+    const stamp = (v: string) => {
+      const el0 = areaRef.current;
+      if (el0) el0.dataset.bvOpen = v;
+    };
+    if (!label || !webview) {
+      stamp(`bail:no-${!label ? "label" : "webview"}`);
+      return;
+    }
     const el = areaRef.current;
-    if (!el) return;
+    if (!el) {
+      stamp("bail:no-el");
+      return;
+    }
     let closed = false;
     const r = el.getBoundingClientRect();
+    stamp("invoking");
     webview
       .open(label, {
         url: localUrl,
@@ -225,15 +238,20 @@ function BrowserViewImpl({
       })
       .then(() => {
         if (closed) {
+          stamp("closed-during-open");
           void webview.close(label).catch(() => {});
           return;
         }
+        stamp("opened");
         openedRef.current = true;
         // 생성 경쟁 보정: open 완료 후 현재 visible 재적용
         void webview.visible(label, true).catch(() => {});
         syncBounds();
       })
-      .catch((e: unknown) => console.error("browser_open:", e));
+      .catch((e: unknown) => {
+        stamp(`error:${String(e).slice(0, 80)}`);
+        console.error("browser_open:", e);
+      });
 
     // 명령 레지스트리에 label 등록(navigator 명령 라우팅용).
     // getUrl 클로저는 컴포넌트 state 의 최신 localUrl 을 반환한다.
