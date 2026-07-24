@@ -12925,6 +12925,9 @@ function domWaitForBody(selector, timeoutMs = 5e3) {
 }
 
 // src/bounds-follow.ts
+function followShouldContinue(i) {
+  return i.live || i.gesture || i.stableFrames < i.stopAfter;
+}
 function boundsCommitDecision(i) {
   if (i.sameRect) return "skip";
   if (!i.force && i.live && i.msSinceLast < i.throttleMs) return "pending";
@@ -13534,6 +13537,7 @@ function evalErr(e) {
 // src/browser-view.tsx
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
 var LIVE_THROTTLE_MS = 32;
+var STABLE_STOP_FRAMES = 4;
 function normalizeUrl2(input) {
   const s = input.trim();
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(s)) return s;
@@ -13699,10 +13703,77 @@ function BrowserViewImpl({
   }, [label]);
   (0, import_react.useEffect)(() => {
     const el = areaRef.current;
-    if (!el || !webview || !label) return;
-    const off = webview.mirror?.(label, el);
-    return () => off?.dispose();
-  }, [webview, label]);
+    if (!el) return;
+    let rafId = 0;
+    let stable = 0;
+    const tick = () => {
+      rafId = 0;
+      const s = syncBounds();
+      stable = s === "same" ? stable + 1 : 0;
+      if (followShouldContinue({
+        live: liveRef.current,
+        gesture: gestureRef.current,
+        stableFrames: stable,
+        stopAfter: STABLE_STOP_FRAMES
+      })) {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+    const arm = () => {
+      stable = 0;
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    };
+    const ro = new ResizeObserver(arm);
+    ro.observe(el);
+    const onWinResize = () => arm();
+    window.addEventListener("resize", onWinResize);
+    const onPointerDown = () => arm();
+    const onPointerMove = (e) => {
+      if (e.buttons) arm();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onPointerMove, true);
+    const offLive = app.events.on("window.live-resize", (p) => {
+      const active = !!p.active;
+      liveRef.current = active;
+      if (!active) syncBounds(true);
+      arm();
+    });
+    const offGesture = app.events.on("layout.resize-gesture", (p) => {
+      const active = !!p.active;
+      gestureRef.current = active;
+      if (!active) syncBounds(true);
+      arm();
+    });
+    arm();
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onWinResize);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointermove", onPointerMove, true);
+      offLive.dispose();
+      offGesture.dispose();
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [syncBounds, app, webview]);
+  (0, import_react.useEffect)(() => {
+    if (!webview || !label) return;
+    const off = app.events.on("layout.reflow", () => {
+      if (gestureRef.current) return;
+      lastRectRef.current = "";
+      syncBounds(true);
+    });
+    const offPark = app.events.on("view.parked", (p) => {
+      const q = p;
+      if (q.viewId !== ctx.viewId || q.parked) return;
+      lastRectRef.current = "";
+      requestAnimationFrame(() => syncBounds(true));
+    });
+    return () => {
+      off.dispose();
+      offPark.dispose();
+    };
+  }, [webview, label, app, syncBounds, ctx.viewId]);
   (0, import_react.useEffect)(() => {
     if (!label || !webview) return;
     const d1 = webview.on(label, "nav", (p) => {

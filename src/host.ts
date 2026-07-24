@@ -70,8 +70,6 @@ export interface WebviewApi {
   open: (label: string, o: { url: string; x: number; y: number; w: number; h: number }) => Promise<void>;
   /** 슬롯 rect 동기화(분할/리사이즈 — 프레임당 1회 권장). */
   bounds: (label: string, x: number, y: number, w: number, h: number) => Promise<void>;
-  /** DOM 앵커 추종을 코어 미러 단일 기계에 위임(자체 rAF 루프 금지). */
-  mirror?: (label: string, el: HTMLElement) => { dispose(): void };
   /** 표시/숨김(탭 전환·최대화의 숨김 슬롯). */
   visible: (label: string, visible: boolean) => Promise<void>;
   /** URL 이동. */

@@ -231,17 +231,119 @@ function BrowserViewImpl({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [label]);
 
-  // bounds 구동원 — 코어 네이티브 미러 단일 기계(nativeMirror)에 위임한다. 근거: 디바이더
-  // 강조바가 같은 방식(커밋 동기 틱 + 위상 rAF + 동일-rect 스킵)으로 완벽 추종함을 실측으로
-  // 증명했고, 그 방식이 계약으로 승격됐다(코어 webview.mirror). 자체 rAF 루프·게이트 재구현
-  // 금지 — 위상 인지(모션 arm/스냅)와 창 리사이즈 arm 은 전부 코어가 소유한다.
+  // bounds 구동원 — 네이티브 webview 가 DOM 슬롯(.bv-area)을 추종한다. DOM 엔 "위치 이동"
+  // 이벤트가 없어(ResizeObserver 는 크기만) 추종에 rAF 가 필요하지만, 영구 60fps rAF 폴링은
+  // idle 에도 매 프레임 getBoundingClientRect(강제 reflow)를 태우고, 리사이즈 중엔 매 프레임
+  // 네이티브 재배치를 유발해 CPU 가 폭발한다. 그래서 "움직일 때만" 도는 자가종료 추종 루프로
+  // 바꾼다:
+  //   - rect 가 STABLE_STOP_FRAMES 연속 무변화면 루프를 멈춘다(idle 폴링 0).
+  //   - 실제 트리거에서만 다시 깨운다: 슬롯 리사이즈(분할/사이드바)·창 리사이즈·라이브
+  //     드래그(코어 신호)·포인터 드래그(분할 divider·사이드바 리사이저 = 슬롯 "이동"인데
+  //     크기는 안 바뀔 수 있어 ResizeObserver 가 못 잡는 경우).
+  //   - 드래그(liveRef) 중엔 syncBounds 가 네이티브 재배치를 ~30Hz 로 스로틀, 끝에 1회 정확 스냅.
   useEffect(() => {
     const el = areaRef.current;
-    if (!el || !webview || !label) return;
-    const off = webview.mirror?.(label, el);
-    return () => off?.dispose();
-  }, [webview, label]);
+    if (!el) return;
 
+    let rafId = 0;
+    let stable = 0;
+    const tick = () => {
+      rafId = 0;
+      const s = syncBounds();
+      stable = s === "same" ? stable + 1 : 0;
+      // 드래그(창 리사이즈·디바이더) 중이거나 아직 안정 전이면 계속 추종, 아니면 멈춘다(idle 0).
+      if (
+        followShouldContinue({
+          live: liveRef.current,
+          gesture: gestureRef.current,
+          stableFrames: stable,
+          stopAfter: STABLE_STOP_FRAMES,
+        })
+      ) {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+    const arm = () => {
+      stable = 0;
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    };
+
+    const ro = new ResizeObserver(arm);
+    ro.observe(el);
+    const onWinResize = () => arm();
+    window.addEventListener("resize", onWinResize);
+    // 포인터 드래그(분할 divider·사이드바 리사이저)는 슬롯을 이동시키지만 크기는 안 바꿀 수
+    // 있다(ResizeObserver 미발화) → 드래그 동안만 추종을 깨운다. 버튼 눌림(e.buttons)일 때만.
+    const onPointerDown = () => arm();
+    const onPointerMove = (e: PointerEvent) => {
+      if (e.buttons) arm();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onPointerMove, true);
+
+    // 라이브 리사이즈 게이트(코어 네이티브 신호 — app.focus 와 동형 채널). 시작=추종 깨움
+    // (스로틀 적용), 끝=정확한 최종 rect 로 1회 강제 스냅 후 잔여 레이아웃 정착 보정.
+    const offLive = app.events.on("window.live-resize", (p) => {
+      const active = !!(p as { active?: boolean }).active;
+      liveRef.current = active;
+      if (!active) syncBounds(true);
+      arm();
+    });
+
+    // 디바이더 드래그 — layout.resize-gesture(창-로컬). 드래그 내내 추종 루프를 살려 매 프레임
+    // 앵커 rect 로 bounds 를 커밋한다: DOM 분할은 이미 매 프레임 라이브 커밋이므로 네이티브가
+    // 같은 리듬으로 따라와야 실시간 리사이즈다(최대 1프레임 지연). 변화 없는 프레임은 same-rect
+    // 스킵이라 IPC 0. 끝: 최종 레이아웃 커밋 후 도착하므로 정확한 최종 rect 로 1회 강제 스냅.
+    // (freeze-frame 정지 사진은 폐기 — 드래그 중 콘텐츠가 박제되고, 옛 크기 스탠드인이 빈 슬롯을
+    //  드러내는 잔상의 근원이었다.)
+    const offGesture = app.events.on("layout.resize-gesture", (p) => {
+      const active = !!(p as { active?: boolean }).active;
+      gestureRef.current = active;
+      if (!active) syncBounds(true);
+      arm();
+    });
+
+    arm(); // 초기 정착 1회.
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onWinResize);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointermove", onPointerMove, true);
+      offLive.dispose();
+      offGesture.dispose();
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [syncBounds, app, webview]);
+
+  useEffect(() => {
+    if (!webview || !label) return;
+    // 콘텐츠 탭 전환 = 슬롯 파킹/언파킹(위치 이동, 크기 무변 → ResizeObserver 미발화). 코어가 그
+    // 렌더 커밋 직후(useLayoutEffect) layout.reflow 를 발화하므로, 여기서 최종 앵커 rect 로 bounds 를
+    // 1회 재스냅한다 — 활성 뷰=온스크린, 비활성 뷰=오프스크린(파킹). 폴링/추종 아님: 커밋 후 신호에
+    // 대한 단일 반응이라 클릭에 즉시 따라온다.
+    const off = app.events.on("layout.reflow", () => {
+      // 모션 위상 중엔 재스냅 금지 — reflow 는 페인트 전(useLayoutEffect)에 오므로 여기서
+      // 읽는 rect 는 FLIP translate 미반영 최종 좌표다. 위상 중 그 좌표로 강제 스냅하면
+      // child 가 t0 에 목적지로 텔레포트해 코어의 파라메트릭 CA 구동(같은 곡선 병렬 주행)이
+      // final→final 무효가 된다(실측). 위상 종료 스냅은 gesture-end 핸들러가 이미 보증한다.
+      if (gestureRef.current) return;
+      lastRectRef.current = "";
+      syncBounds(true);
+    });
+    // 코어 view.parked(시트 && 탭 유효 가시성) — 표시/숨김은 코어가 직접 수행하고, 여기서는 복귀
+    // 직후 앵커 rect 로 재스냅만 한다. reflow 와 달리 뷰 단위 정확 신호라 파킹 rect 를 읽는 경쟁이 없다.
+    const offPark = app.events.on("view.parked", (p) => {
+      const q = p as { viewId?: string; parked?: boolean };
+      if (q.viewId !== ctx.viewId || q.parked) return;
+      lastRectRef.current = "";
+      requestAnimationFrame(() => syncBounds(true));
+    });
+    return () => {
+      off.dispose();
+      offPark.dispose();
+    };
+  }, [webview, label, app, syncBounds, ctx.viewId]);
 
   // webview nav 이벤트 → localUrl 동기화 + ctx.setTitle
   useEffect(() => {
