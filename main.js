@@ -12924,6 +12924,16 @@ function domWaitForBody(selector, timeoutMs = 5e3) {
           });`;
 }
 
+// ../../kits/soksak-kit-browser-common/src/motion-freeze.ts
+function leadPosition(i) {
+  if (!i.moving || !i.prev) return i.cur;
+  const dx = i.cur.x - i.prev.x;
+  const dy = i.cur.y - i.prev.y;
+  if (dx === 0 && dy === 0) return i.cur;
+  if (Math.abs(dx) > i.teleportPx || Math.abs(dy) > i.teleportPx) return i.cur;
+  return { x: i.cur.x + dx, y: i.cur.y + dy };
+}
+
 // src/bounds-follow.ts
 function followShouldContinue(i) {
   return i.live || i.gesture || i.stableFrames < i.stopAfter;
@@ -13570,6 +13580,7 @@ function BrowserViewImpl({
   const areaRef = (0, import_react.useRef)(null);
   const openedRef = (0, import_react.useRef)(false);
   const lastRectRef = (0, import_react.useRef)("");
+  const prevSampleRef = (0, import_react.useRef)(null);
   const liveRef = (0, import_react.useRef)(false);
   const gestureRef = (0, import_react.useRef)(false);
   const lastSentRef = (0, import_react.useRef)(0);
@@ -13651,7 +13662,14 @@ function BrowserViewImpl({
       const y = Math.ceil(r.top);
       const w = Math.max(1, Math.floor(r.right) - x);
       const h = Math.max(1, Math.floor(r.bottom) - y);
-      const key = `${x},${y},${w},${h}`;
+      const led = force ? { x, y } : leadPosition({
+        prev: prevSampleRef.current,
+        cur: { x, y },
+        moving: gestureRef.current,
+        teleportPx: 200
+      });
+      prevSampleRef.current = { x, y };
+      const key = `${led.x},${led.y},${w},${h}`;
       const decision = boundsCommitDecision({
         force,
         live: liveRef.current,
@@ -13664,7 +13682,7 @@ function BrowserViewImpl({
       if (decision === "pending") return "pending";
       lastRectRef.current = key;
       lastSentRef.current = performance.now();
-      void webview.bounds(label, x, y, w, h);
+      void webview.bounds(label, led.x, led.y, w, h);
       return "sent";
     },
     [webview, label]
@@ -13740,10 +13758,17 @@ function BrowserViewImpl({
       arm();
     });
     const offGesture = app.events.on("layout.resize-gesture", (p) => {
-      const active = !!p.active;
+      const q = p;
+      const active = !!q.active;
       gestureRef.current = active;
       if (!active) syncBounds(true);
       arm();
+    });
+    const offVeil = app.events.on("view.veiled", (p) => {
+      const q = p;
+      if (q.viewId !== ctx.viewId || !label || !webview) return;
+      void webview.visible(label, !q.veiled, false).catch(() => {
+      });
     });
     arm();
     return () => {
@@ -13754,6 +13779,7 @@ function BrowserViewImpl({
       offLive.dispose();
       offGesture.dispose();
       if (rafId) cancelAnimationFrame(rafId);
+      offVeil.dispose();
     };
   }, [syncBounds, app, webview]);
   (0, import_react.useEffect)(() => {
