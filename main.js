@@ -13723,7 +13723,6 @@ function BrowserViewImpl({
   const verifyAlive = (0, import_react.useCallback)(() => {
     if (!label || !webview) return;
     void webview.list("b-").then((labels) => {
-      if (!openedRef.current) return;
       if (!labels.includes(label)) {
         openedRef.current = false;
         setOpenEpoch((e) => e + 1);
@@ -13773,7 +13772,10 @@ function BrowserViewImpl({
       const q = p;
       const active = !!q.active;
       gestureRef.current = active;
-      if (!active) syncBounds(true);
+      if (!active) {
+        syncBounds(true);
+        verifyAlive();
+      }
       arm();
     });
     const offVeil = app.events.on("view.veiled", (p) => {

@@ -255,7 +255,8 @@ function BrowserViewImpl({
     void webview
       .list("b-")
       .then((labels) => {
-        if (!openedRef.current) return;
+        // openedRef 를 가드하지 않는다 — 원 open 이 조기 실패한 마운트(믿음조차 없는 빈 홀)도
+        // 치유 대상이다. 진행 중 open 과의 경합은 이펙트의 closed 플래그가 회수한다(고아 방지).
         if (!labels.includes(label)) {
           openedRef.current = false;
           setOpenEpoch((e) => e + 1);
@@ -332,7 +333,10 @@ function BrowserViewImpl({
       const q = p as { active?: boolean; kinds?: string[] };
       const active = !!q.active;
       gestureRef.current = active;
-      if (!active) syncBounds(true);
+      if (!active) {
+        syncBounds(true);
+        verifyAlive(); // 위상 끝 = 복귀 에지 — 생존 검증(멱등)
+      }
       arm();
     });
     // 코어 슬롯 동결(§4.6)의 표면 가림 릴레이 — 스탠드인이 선 동안만 child 를 숨긴다.
