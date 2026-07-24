@@ -13580,6 +13580,7 @@ function BrowserViewImpl({
   const areaRef = (0, import_react.useRef)(null);
   const openedRef = (0, import_react.useRef)(false);
   const lastRectRef = (0, import_react.useRef)("");
+  const [openEpoch, setOpenEpoch] = (0, import_react.useState)(0);
   const prevSampleRef = (0, import_react.useRef)(null);
   const liveRef = (0, import_react.useRef)(false);
   const gestureRef = (0, import_react.useRef)(false);
@@ -13718,7 +13719,18 @@ function BrowserViewImpl({
       void webview.close(label).catch(() => {
       });
     };
-  }, [label]);
+  }, [label, openEpoch]);
+  const verifyAlive = (0, import_react.useCallback)(() => {
+    if (!label || !webview) return;
+    void webview.list("b-").then((labels) => {
+      if (!openedRef.current) return;
+      if (!labels.includes(label)) {
+        openedRef.current = false;
+        setOpenEpoch((e) => e + 1);
+      }
+    }).catch(() => {
+    });
+  }, [label, webview]);
   (0, import_react.useEffect)(() => {
     const el = areaRef.current;
     if (!el) return;
@@ -13769,6 +13781,7 @@ function BrowserViewImpl({
       if (q.viewId !== ctx.viewId || !label || !webview) return;
       void webview.visible(label, !q.veiled, false).catch(() => {
       });
+      if (!q.veiled) verifyAlive();
     });
     arm();
     return () => {
@@ -13793,6 +13806,7 @@ function BrowserViewImpl({
       const q = p;
       if (q.viewId !== ctx.viewId || q.parked) return;
       lastRectRef.current = "";
+      verifyAlive();
       requestAnimationFrame(() => syncBounds(true));
     });
     return () => {
