@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { createBrowserToolbar } from "soksak-kit-browser-common";
 import type { BrowserToolbar } from "soksak-kit-browser-common";
 import type { PluginApi, PluginViewContext } from "./host";
-import { boundsCommitDecision, followShouldContinue } from "./bounds-follow";
+import { boundsCommitDecision, followShouldContinue, leadPosition } from "./bounds-follow";
 import { loadStatus } from "./view-status";
 import { t } from "./i18n";
 import { registerLabel, unregisterLabel, setPendingUrl, takePendingUrl } from "./commands";
@@ -81,6 +81,8 @@ function BrowserViewImpl({
   const areaRef = useRef<HTMLDivElement>(null);
   const openedRef = useRef(false);
   const lastRectRef = useRef("");
+  // 직전 rAF 실측(선행 외삽용) — 송신 여부와 무관하게 매 측정마다 갱신한다(속도 = 표시 타임라인).
+  const prevSampleRef = useRef<{ x: number; y: number } | null>(null);
   // 라이브 리사이즈(가장자리 드래그) 진행 여부 — 코어 app.events("window.live-resize") 게이트.
   const liveRef = useRef(false);
   // 디바이더 드래그(layout.resize-gesture) 진행 여부 — 드래그 내내 추종 루프를 살려두는 게이트.
@@ -170,7 +172,18 @@ function BrowserViewImpl({
       const y = Math.ceil(r.top);
       const w = Math.max(1, Math.floor(r.right) - x);
       const h = Math.max(1, Math.floor(r.bottom) - y);
-      const key = `${x},${y},${w},${h}`;
+      // 모션 위상(gesture) 중엔 1프레임 선행 위치를 보낸다(leadPosition — 표시 지연 상쇄).
+      // force(위상 끝 정확 스냅)는 실측 그대로 — 착지 정확성이 외삽보다 우선한다.
+      const led = force
+        ? { x, y }
+        : leadPosition({
+            prev: prevSampleRef.current,
+            cur: { x, y },
+            moving: gestureRef.current,
+            teleportPx: 200,
+          });
+      prevSampleRef.current = { x, y };
+      const key = `${led.x},${led.y},${w},${h}`;
       // 커밋 판정은 순수 정책(bounds-follow.ts)이 소유 — gesture 는 유예를 만들지 않는다(실시간 계약).
       const decision = boundsCommitDecision({
         force,
@@ -184,7 +197,7 @@ function BrowserViewImpl({
       if (decision === "pending") return "pending";
       lastRectRef.current = key;
       lastSentRef.current = performance.now();
-      void webview.bounds(label, x, y, w, h);
+      void webview.bounds(label, led.x, led.y, w, h);
       return "sent";
     },
     [webview, label],
