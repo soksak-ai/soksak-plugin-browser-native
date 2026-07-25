@@ -13787,6 +13787,7 @@ function BrowserViewImpl({
     });
     const offGesture = app.events.on("layout.resize-gesture", (p) => {
       const q = p;
+      if (q.views && ctx.viewId && !q.views.includes(ctx.viewId)) return;
       const active = !!q.active;
       gestureRef.current = active;
       if (!active) {

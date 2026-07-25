@@ -351,7 +351,11 @@ function BrowserViewImpl({
     // (freeze-frame 정지 사진은 폐기 — 드래그 중 콘텐츠가 박제되고, 옛 크기 스탠드인이 빈 슬롯을
     //  드러내는 잔상의 근원이었다.)
     const offGesture = app.events.on("layout.resize-gesture", (p) => {
-      const q = p as { active?: boolean; kinds?: string[] };
+      const q = p as { active?: boolean; kinds?: string[]; views?: string[] };
+      // 범위 밖이면 아무 일도 하지 않는다 — 무관한 위상에 추종 루프를 깨우고 bounds 를 강제
+      // 재전송하고 생존 프로브를 돌리던 결함의 근치(실측: 무관 스왑 3회에 프로브 4회).
+      // views 생략 = 전역 위상(레일 폭 변화 등 실제로 모두가 움직이는 경우)이라 참여한다.
+      if (q.views && ctx.viewId && !q.views.includes(ctx.viewId)) return;
       const active = !!q.active;
       gestureRef.current = active;
       if (!active) {
