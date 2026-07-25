@@ -408,10 +408,9 @@ function BrowserViewImpl({
       // child 가 t0 에 목적지로 텔레포트해 코어의 파라메트릭 CA 구동(같은 곡선 병렬 주행)이
       // final→final 무효가 된다(실측). 위상 종료 스냅은 gesture-end 핸들러가 이미 보증한다.
       if (gestureRef.current) return;
-      // 캐시만 무효화하고 비강제 — rect 가 실제로 다를 때만 IPC(same-rect 스킵). force 는
-      // 무관한 커밋(다른 뷰 포커스 등)마다 네이티브 재배치를 태워 표면이 일하게 했다(실측:
-      // 무관 스왑 5회에 bounds 전송 5회·생존 프로브 3회). 기하가 같으면 아무 일도 없다.
-      lastRectRef.current = "";
+      // 캐시를 비우지 않는다 — 캐시는 "마지막으로 보낸 값"이라 stale 이 될 수 없고, 비우면
+      // same-rect 비교가 무력화돼 무관한 커밋마다 전송이 나간다(실측: 스왑 5회에 11건).
+      // 비강제 호출 하나로 충분하다: 기하가 같으면 IPC 0, 달라졌으면 그 즉시 1회.
       syncBounds();
     });
     // 코어 view.parked(시트 && 탭 유효 가시성) — 표시/숨김은 코어가 직접 수행하고, 여기서는 복귀

@@ -13825,7 +13825,6 @@ function BrowserViewImpl({
     if (!webview || !label) return;
     const off = app.events.on("layout.reflow", () => {
       if (gestureRef.current) return;
-      lastRectRef.current = "";
       syncBounds();
     });
     const offPark = app.events.on("view.parked", (p) => {
