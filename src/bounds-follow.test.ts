@@ -78,3 +78,52 @@ describe("leadPosition", () => {
   });
 });
 
+
+// §4.5-4 · §4.6 — 위상 중 쓰기 주체는 없고, 착지 쓰기는 절대 삼켜지지 않는다.
+describe("착지 정확 스냅과 스탠드인 침묵", () => {
+  it("force 는 same-rect 를 관통한다 — 착지 쓰기는 유일하므로 스킵될 수 없다", () => {
+    // 종전 코드는 sameRect 를 force 보다 먼저 판정해, 캐시가 한 번 어긋나면 착지를 영구히
+    // 삼켰다(주석은 "force 는 항상 전송"이라 약속하고 코드는 어겼다).
+    expect(
+      boundsCommitDecision({
+        force: true,
+        live: false,
+        gesture: false,
+        sameRect: true,
+        msSinceLast: 0,
+        throttleMs: 33,
+      }),
+    ).toBe("send");
+  });
+
+  it("veiled(스탠드인 뒤)면 따라가지 않는다 — 위상 중 쓰기 0", () => {
+    expect(
+      boundsCommitDecision({
+        force: false,
+        live: false,
+        gesture: true,
+        veiled: true,
+        sameRect: false,
+        msSinceLast: 999,
+        throttleMs: 33,
+      }),
+    ).toBe("skip");
+    expect(
+      followShouldContinue({ live: true, gesture: true, veiled: true, stableFrames: 0, stopAfter: 3 }),
+    ).toBe(false);
+  });
+
+  it("veiled 여도 착지(force)는 나간다", () => {
+    expect(
+      boundsCommitDecision({
+        force: true,
+        live: false,
+        gesture: false,
+        veiled: true,
+        sameRect: true,
+        msSinceLast: 0,
+        throttleMs: 33,
+      }),
+    ).toBe("send");
+  });
+});

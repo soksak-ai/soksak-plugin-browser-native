@@ -87,8 +87,8 @@ function BrowserViewImpl({
   const [openEpoch, setOpenEpoch] = useState(0);
   // 직전 rAF 실측(선행 외삽용) — 송신 여부와 무관하게 매 측정마다 갱신한다(속도 = 표시 타임라인).
   const prevSampleRef = useRef<{ x: number; y: number } | null>(null);
-  // 이 뷰가 현재 모션 위상의 대상인가(시작 에지에 확정) — 종료 전원 통지의 게이트.
-  const inPhaseRef = useRef(false);
+  // 코어 스탠드인이 이 표면을 덮고 있는가(view.veiled) — 위상 중 쓰기 금지의 단일 게이트.
+  const veiledRef = useRef(false);
   // 라이브 리사이즈(가장자리 드래그) 진행 여부 — 코어 app.events("window.live-resize") 게이트.
   const liveRef = useRef(false);
   // 디바이더 드래그(layout.resize-gesture) 진행 여부 — 드래그 내내 추종 루프를 살려두는 게이트.
@@ -195,6 +195,7 @@ function BrowserViewImpl({
         force,
         live: liveRef.current,
         gesture: gestureRef.current,
+        veiled: veiledRef.current,
         sameRect: key === lastRectRef.current,
         msSinceLast: performance.now() - lastSentRef.current,
         throttleMs: LIVE_THROTTLE_MS,
@@ -312,6 +313,7 @@ function BrowserViewImpl({
         followShouldContinue({
           live: liveRef.current,
           gesture: gestureRef.current,
+          veiled: veiledRef.current,
           stableFrames: stable,
           stopAfter: STABLE_STOP_FRAMES,
         })
@@ -353,19 +355,10 @@ function BrowserViewImpl({
     // (freeze-frame 정지 사진은 폐기 — 드래그 중 콘텐츠가 박제되고, 옛 크기 스탠드인이 빈 슬롯을
     //  드러내는 잔상의 근원이었다.)
     const offGesture = app.events.on("layout.resize-gesture", (p) => {
-      const q = p as { active?: boolean; kinds?: string[]; views?: string[] };
-      // 범위 밖이면 아무 일도 하지 않는다 — 무관한 위상에 추종 루프를 깨우고 bounds 를 강제
-      // 재전송하고 생존 프로브를 돌리던 결함의 근치(실측: 무관 스왑 3회에 프로브 4회).
-      // views 생략 = 전역 위상(레일 폭 변화 등 실제로 모두가 움직이는 경우)이라 참여한다.
+      const q = p as { active?: boolean; kinds?: string[] };
+      // 이 표면이 위상의 대상인지 브로드캐스트로 추측하지 않는다 — 코어가 동결한 슬롯에만
+      // view.veiled 로 정확히 통지한다(아래). 여기서는 드래그(resize) 라이브 추종만 다룬다.
       const active = !!q.active;
-      if (active) {
-        // 시작 에지에서 참여 여부를 확정한다 — 종료는 전원 통지(코어 계약)라 여기서 기억해야
-        // 무관 위상의 종료가 강제 재스냅·생존 프로브를 부르지 않는다.
-        inPhaseRef.current = !q.views || !ctx.viewId || q.views.includes(ctx.viewId);
-        if (!inPhaseRef.current) return;
-      } else if (!inPhaseRef.current) {
-        return; // 참여하지 않은 위상의 종료 — 할 일이 없다
-      }
       gestureRef.current = active;
       if (!active) {
         syncBounds(true);
@@ -373,13 +366,20 @@ function BrowserViewImpl({
       }
       arm();
     });
-    // 코어 슬롯 동결(§4.6)의 표면 가림 릴레이 — 스탠드인이 선 동안만 child 를 숨긴다.
-    // 복귀는 표현 전용(focus:false) — 사용자의 포커스 결정을 탈취하지 않는다.
+    // 코어 슬롯 동결(§4.6) 릴레이. veil 은 "숨겨라"가 아니라 "스탠드인 뒤에 있다: 따라가지
+    // 말고, 해동 에지에 정확히 한 번 착지하라"다. 표면을 숨기면 복귀 사이클(WK 기상 재부착
+    // 1프레임 소실)이 스왑마다 화면을 깜빡이게 한다(§4.6-3 — 실사고).
     const offVeil = app.events.on("view.veiled", (p) => {
       const q = p as { viewId?: string; veiled?: boolean };
       if (q.viewId !== ctx.viewId || !label || !webview) return;
-      void webview.visible(label, !q.veiled, false).catch(() => {});
-      if (!q.veiled) verifyAlive();
+      veiledRef.current = !!q.veiled;
+      if (q.veiled) return; // 위상 중 이 표면에 쓰지 않는다(쓰기 주체 0)
+      // 착지 = 유일한 쓰기 시점. 캐시를 비우고 강제 1회 — 스탠드인이 물러나기 전에 실좌표를
+      // 확정한다(§4.5-4 종료 에지 정확 스냅).
+      lastRectRef.current = "";
+      syncBounds(true);
+      verifyAlive();
+      arm();
     });
 
     arm(); // 초기 정착 1회.
@@ -403,14 +403,12 @@ function BrowserViewImpl({
     // 1회 재스냅한다 — 활성 뷰=온스크린, 비활성 뷰=오프스크린(파킹). 폴링/추종 아님: 커밋 후 신호에
     // 대한 단일 반응이라 클릭에 즉시 따라온다.
     const off = app.events.on("layout.reflow", () => {
-      // 모션 위상 중엔 재스냅 금지 — reflow 는 페인트 전(useLayoutEffect)에 오므로 여기서
-      // 읽는 rect 는 FLIP translate 미반영 최종 좌표다. 위상 중 그 좌표로 강제 스냅하면
-      // child 가 t0 에 목적지로 텔레포트해 코어의 파라메트릭 CA 구동(같은 곡선 병렬 주행)이
-      // final→final 무효가 된다(실측). 위상 종료 스냅은 gesture-end 핸들러가 이미 보증한다.
-      if (gestureRef.current) return;
-      // 캐시를 비우지 않는다 — 캐시는 "마지막으로 보낸 값"이라 stale 이 될 수 없고, 비우면
-      // same-rect 비교가 무력화돼 무관한 커밋마다 전송이 나간다(실측: 스왑 5회에 11건).
-      // 비강제 호출 하나로 충분하다: 기하가 같으면 IPC 0, 달라졌으면 그 즉시 1회.
+      // 위상 중엔 재스냅 금지 — 스탠드인 뒤의 표면은 해동 에지에 정확히 한 번만 착지한다(§4.6).
+      // reflow 는 페인트 전에 오므로 여기서 읽는 rect 는 위상 최종 좌표이고, 그걸로 지금 쓰면
+      // child 가 t0 에 목적지로 텔레포트한다.
+      if (veiledRef.current || gestureRef.current) return;
+      // 캐시는 "마지막으로 보낸 값"이고 이 표면의 bounds 를 쓰는 주체는 이 플러그인 하나뿐이라
+      // stale 이 될 수 없다 — 비강제 하나로 충분하다: 기하가 같으면 IPC 0, 달라졌으면 즉시 1회.
       syncBounds();
     });
     // 코어 view.parked(시트 && 탭 유효 가시성) — 표시/숨김은 코어가 직접 수행하고, 여기서는 복귀

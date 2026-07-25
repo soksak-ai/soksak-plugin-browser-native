@@ -12936,11 +12936,14 @@ function leadPosition(i) {
 
 // src/bounds-follow.ts
 function followShouldContinue(i) {
+  if (i.veiled) return false;
   return i.live || i.gesture || i.stableFrames < i.stopAfter;
 }
 function boundsCommitDecision(i) {
+  if (i.force) return "send";
+  if (i.veiled) return "skip";
   if (i.sameRect) return "skip";
-  if (!i.force && i.live && i.msSinceLast < i.throttleMs) return "pending";
+  if (i.live && i.msSinceLast < i.throttleMs) return "pending";
   return "send";
 }
 
@@ -13582,7 +13585,7 @@ function BrowserViewImpl({
   const lastRectRef = (0, import_react.useRef)("");
   const [openEpoch, setOpenEpoch] = (0, import_react.useState)(0);
   const prevSampleRef = (0, import_react.useRef)(null);
-  const inPhaseRef = (0, import_react.useRef)(false);
+  const veiledRef = (0, import_react.useRef)(false);
   const liveRef = (0, import_react.useRef)(false);
   const gestureRef = (0, import_react.useRef)(false);
   const lastSentRef = (0, import_react.useRef)(0);
@@ -13676,6 +13679,7 @@ function BrowserViewImpl({
         force,
         live: liveRef.current,
         gesture: gestureRef.current,
+        veiled: veiledRef.current,
         sameRect: key === lastRectRef.current,
         msSinceLast: performance.now() - lastSentRef.current,
         throttleMs: LIVE_THROTTLE_MS
@@ -13760,6 +13764,7 @@ function BrowserViewImpl({
       if (followShouldContinue({
         live: liveRef.current,
         gesture: gestureRef.current,
+        veiled: veiledRef.current,
         stableFrames: stable,
         stopAfter: STABLE_STOP_FRAMES
       })) {
@@ -13789,12 +13794,6 @@ function BrowserViewImpl({
     const offGesture = app.events.on("layout.resize-gesture", (p) => {
       const q = p;
       const active = !!q.active;
-      if (active) {
-        inPhaseRef.current = !q.views || !ctx.viewId || q.views.includes(ctx.viewId);
-        if (!inPhaseRef.current) return;
-      } else if (!inPhaseRef.current) {
-        return;
-      }
       gestureRef.current = active;
       if (!active) {
         syncBounds(true);
@@ -13805,9 +13804,12 @@ function BrowserViewImpl({
     const offVeil = app.events.on("view.veiled", (p) => {
       const q = p;
       if (q.viewId !== ctx.viewId || !label || !webview) return;
-      void webview.visible(label, !q.veiled, false).catch(() => {
-      });
-      if (!q.veiled) verifyAlive();
+      veiledRef.current = !!q.veiled;
+      if (q.veiled) return;
+      lastRectRef.current = "";
+      syncBounds(true);
+      verifyAlive();
+      arm();
     });
     arm();
     return () => {
@@ -13824,7 +13826,7 @@ function BrowserViewImpl({
   (0, import_react.useEffect)(() => {
     if (!webview || !label) return;
     const off = app.events.on("layout.reflow", () => {
-      if (gestureRef.current) return;
+      if (veiledRef.current || gestureRef.current) return;
       syncBounds();
     });
     const offPark = app.events.on("view.parked", (p) => {
