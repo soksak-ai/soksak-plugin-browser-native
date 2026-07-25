@@ -13582,6 +13582,7 @@ function BrowserViewImpl({
   const lastRectRef = (0, import_react.useRef)("");
   const [openEpoch, setOpenEpoch] = (0, import_react.useState)(0);
   const prevSampleRef = (0, import_react.useRef)(null);
+  const inPhaseRef = (0, import_react.useRef)(false);
   const liveRef = (0, import_react.useRef)(false);
   const gestureRef = (0, import_react.useRef)(false);
   const lastSentRef = (0, import_react.useRef)(0);
@@ -13787,8 +13788,13 @@ function BrowserViewImpl({
     });
     const offGesture = app.events.on("layout.resize-gesture", (p) => {
       const q = p;
-      if (q.views && ctx.viewId && !q.views.includes(ctx.viewId)) return;
       const active = !!q.active;
+      if (active) {
+        inPhaseRef.current = !q.views || !ctx.viewId || q.views.includes(ctx.viewId);
+        if (!inPhaseRef.current) return;
+      } else if (!inPhaseRef.current) {
+        return;
+      }
       gestureRef.current = active;
       if (!active) {
         syncBounds(true);
@@ -13820,7 +13826,7 @@ function BrowserViewImpl({
     const off = app.events.on("layout.reflow", () => {
       if (gestureRef.current) return;
       lastRectRef.current = "";
-      syncBounds(true);
+      syncBounds();
     });
     const offPark = app.events.on("view.parked", (p) => {
       const q = p;

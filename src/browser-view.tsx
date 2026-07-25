@@ -87,6 +87,8 @@ function BrowserViewImpl({
   const [openEpoch, setOpenEpoch] = useState(0);
   // 직전 rAF 실측(선행 외삽용) — 송신 여부와 무관하게 매 측정마다 갱신한다(속도 = 표시 타임라인).
   const prevSampleRef = useRef<{ x: number; y: number } | null>(null);
+  // 이 뷰가 현재 모션 위상의 대상인가(시작 에지에 확정) — 종료 전원 통지의 게이트.
+  const inPhaseRef = useRef(false);
   // 라이브 리사이즈(가장자리 드래그) 진행 여부 — 코어 app.events("window.live-resize") 게이트.
   const liveRef = useRef(false);
   // 디바이더 드래그(layout.resize-gesture) 진행 여부 — 드래그 내내 추종 루프를 살려두는 게이트.
@@ -355,8 +357,15 @@ function BrowserViewImpl({
       // 범위 밖이면 아무 일도 하지 않는다 — 무관한 위상에 추종 루프를 깨우고 bounds 를 강제
       // 재전송하고 생존 프로브를 돌리던 결함의 근치(실측: 무관 스왑 3회에 프로브 4회).
       // views 생략 = 전역 위상(레일 폭 변화 등 실제로 모두가 움직이는 경우)이라 참여한다.
-      if (q.views && ctx.viewId && !q.views.includes(ctx.viewId)) return;
       const active = !!q.active;
+      if (active) {
+        // 시작 에지에서 참여 여부를 확정한다 — 종료는 전원 통지(코어 계약)라 여기서 기억해야
+        // 무관 위상의 종료가 강제 재스냅·생존 프로브를 부르지 않는다.
+        inPhaseRef.current = !q.views || !ctx.viewId || q.views.includes(ctx.viewId);
+        if (!inPhaseRef.current) return;
+      } else if (!inPhaseRef.current) {
+        return; // 참여하지 않은 위상의 종료 — 할 일이 없다
+      }
       gestureRef.current = active;
       if (!active) {
         syncBounds(true);
@@ -399,8 +408,11 @@ function BrowserViewImpl({
       // child 가 t0 에 목적지로 텔레포트해 코어의 파라메트릭 CA 구동(같은 곡선 병렬 주행)이
       // final→final 무효가 된다(실측). 위상 종료 스냅은 gesture-end 핸들러가 이미 보증한다.
       if (gestureRef.current) return;
+      // 캐시만 무효화하고 비강제 — rect 가 실제로 다를 때만 IPC(same-rect 스킵). force 는
+      // 무관한 커밋(다른 뷰 포커스 등)마다 네이티브 재배치를 태워 표면이 일하게 했다(실측:
+      // 무관 스왑 5회에 bounds 전송 5회·생존 프로브 3회). 기하가 같으면 아무 일도 없다.
       lastRectRef.current = "";
-      syncBounds(true);
+      syncBounds();
     });
     // 코어 view.parked(시트 && 탭 유효 가시성) — 표시/숨김은 코어가 직접 수행하고, 여기서는 복귀
     // 직후 앵커 rect 로 재스냅만 한다. reflow 와 달리 뷰 단위 정확 신호라 파킹 rect 를 읽는 경쟁이 없다.
