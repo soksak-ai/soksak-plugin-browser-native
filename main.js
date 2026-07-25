@@ -13838,9 +13838,15 @@ function BrowserViewImpl({
       if (q.viewId !== ctx.viewId || !label || !webview) return;
       veiledRef.current = !!q.veiled;
       if (ctx.viewId) noteSurfaceVeil(ctx.viewId, veiledRef.current);
-      if (q.veiled) return;
+      if (q.veiled) {
+        if (q.hidden) void webview.visible(label, false, false).catch(() => {
+        });
+        return;
+      }
       lastRectRef.current = "";
       syncBounds(true);
+      void webview.visible(label, true, false).catch(() => {
+      });
       verifyAlive();
       arm();
     });

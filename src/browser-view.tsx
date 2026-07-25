@@ -379,19 +379,27 @@ function BrowserViewImpl({
       }
       arm();
     });
-    // 코어 슬롯 동결(§4.6) 릴레이. veil 은 "숨겨라"가 아니라 "스탠드인 뒤에 있다: 따라가지
-    // 말고, 해동 에지에 정확히 한 번 착지하라"다. 표면을 숨기면 복귀 사이클(WK 기상 재부착
-    // 1프레임 소실)이 스왑마다 화면을 깜빡이게 한다(§4.6-3 — 실사고).
+    // 코어 슬롯 동결(§4.6) 릴레이. veil 은 셋을 뜻한다: **감춰라**, 따라가지 마라, 해동 에지에
+    // 정확히 한 번 착지하라. 감춤이 필요한 이유는 활강 중 표면이 제자리에 머무는데 슬롯은
+    // 미끄러져, DOM 이 그 옛 자리를 전부 덮어 준다는 보장이 없기 때문이다(녹화 판독: 활강 중
+    // 페이지가 둘로 보였다 — 미끄러지는 스탠드인 + 레일 안쪽에 드러난 표면 띠).
+    // 깜빡이지 않는 조건은 순서다: 코어가 스탠드인 페인트 커밋 뒤에 이 신호를 보낸다(§5-2).
     const offVeil = app.events.on("view.veiled", (p) => {
-      const q = p as { viewId?: string; veiled?: boolean };
+      const q = p as { viewId?: string; veiled?: boolean; hidden?: boolean };
       if (q.viewId !== ctx.viewId || !label || !webview) return;
       veiledRef.current = !!q.veiled;
       if (ctx.viewId) noteSurfaceVeil(ctx.viewId, veiledRef.current);
-      if (q.veiled) return; // 위상 중 이 표면에 쓰지 않는다(쓰기 주체 0)
-      // 착지 = 유일한 쓰기 시점. 캐시를 비우고 강제 1회 — 스탠드인이 물러나기 전에 실좌표를
-      // 확정한다(§4.5-4 종료 에지 정확 스냅).
+      if (q.veiled) {
+        // 두 에지가 따로 온다: veiled 는 즉시(추종 정지 — 늦으면 추종 루프가 최종 좌표로 한 번
+        // 써서 표면이 t0 에 텔레포트한다), hidden 은 스탠드인 페인트 커밋 뒤(§5-2).
+        if (q.hidden) void webview.visible(label, false, false).catch(() => {});
+        return;
+      }
+      // 착지 = 유일한 쓰기 시점. 좌표를 먼저 확정하고 그 다음 드러낸다 — 순서가 반대면 옛
+      // 자리의 한 프레임이 보인다. 복귀는 표현 전용(focus:false — 포커스 불탈취).
       lastRectRef.current = "";
       syncBounds(true);
+      void webview.visible(label, true, false).catch(() => {});
       verifyAlive();
       arm();
     });
