@@ -13001,6 +13001,21 @@ function takePendingUrl() {
 var activeViews = /* @__PURE__ */ new Map();
 var lastMountedViewId = null;
 var activeViewId = null;
+var surfaceStats = /* @__PURE__ */ new Map();
+function statOf(viewId) {
+  let e = surfaceStats.get(viewId);
+  if (!e) {
+    e = { sends: 0, veiled: false };
+    surfaceStats.set(viewId, e);
+  }
+  return e;
+}
+function noteSurfaceWrite(viewId) {
+  statOf(viewId).sends += 1;
+}
+function noteSurfaceVeil(viewId, veiled) {
+  statOf(viewId).veiled = veiled;
+}
 function registerLabel(viewId, label, getUrl) {
   activeViews.set(viewId, { viewId, label, getUrl });
   lastMountedViewId = viewId;
@@ -13008,6 +13023,7 @@ function registerLabel(viewId, label, getUrl) {
 }
 function unregisterLabel(viewId) {
   activeViews.delete(viewId);
+  surfaceStats.delete(viewId);
   if (activeViewId === viewId) activeViewId = null;
   if (lastMountedViewId === viewId) lastMountedViewId = null;
 }
@@ -13063,6 +13079,21 @@ function registerCommands(ctx) {
       returns: "{ ok, version }",
       message: (d) => `\uBE0C\uB77C\uC6B0\uC800 \uD50C\uB7EC\uADF8\uC778 v${d.version} \uC774 \uC801\uC7AC\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.`,
       handler: () => ({ ok: true, version: "2.0.0" })
+    })
+  );
+  sub(
+    app.commands.register("surface.stats", {
+      description: "Native bounds-write counters per browser view (E2E observation). sends is the running total of bounds commits; veiled is whether the core's stand-in currently covers the surface. During a move phase sends must not advance, and the landing must advance it by exactly one.",
+      triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uD45C\uBA74 \uC1A1\uC2E0 \uACC4\uC218 \uC704\uC0C1 \uC4F0\uAE30 \uD655\uC778" },
+      returns: "{ views: [{ viewId, sends, veiled }] }",
+      message: (d) => `\uD45C\uBA74 ${(d.views ?? []).length}\uAC1C`,
+      handler: () => ({
+        views: [...surfaceStats.entries()].map(([viewId, v]) => ({
+          viewId,
+          sends: v.sends,
+          veiled: v.veiled
+        }))
+      })
     })
   );
   sub(
@@ -13688,6 +13719,7 @@ function BrowserViewImpl({
       if (decision === "pending") return "pending";
       lastRectRef.current = key;
       lastSentRef.current = performance.now();
+      if (ctx.viewId) noteSurfaceWrite(ctx.viewId);
       void webview.bounds(label, led.x, led.y, w, h);
       return "sent";
     },
@@ -13795,7 +13827,7 @@ function BrowserViewImpl({
       const q = p;
       const active = !!q.active;
       gestureRef.current = active;
-      if (!active) {
+      if (!active && !veiledRef.current) {
         syncBounds(true);
         verifyAlive();
       }
@@ -13805,6 +13837,7 @@ function BrowserViewImpl({
       const q = p;
       if (q.viewId !== ctx.viewId || !label || !webview) return;
       veiledRef.current = !!q.veiled;
+      if (ctx.viewId) noteSurfaceVeil(ctx.viewId, veiledRef.current);
       if (q.veiled) return;
       lastRectRef.current = "";
       syncBounds(true);

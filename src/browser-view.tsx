@@ -14,7 +14,14 @@ import type { PluginApi, PluginViewContext } from "./host";
 import { boundsCommitDecision, followShouldContinue, leadPosition } from "./bounds-follow";
 import { loadStatus } from "./view-status";
 import { t } from "./i18n";
-import { registerLabel, unregisterLabel, setPendingUrl, takePendingUrl } from "./commands";
+import {
+  noteSurfaceVeil,
+  noteSurfaceWrite,
+  registerLabel,
+  unregisterLabel,
+  setPendingUrl,
+  takePendingUrl,
+} from "./commands";
 
 // ── IME 조합 중 Enter 무시 (코어 imeKeys.ts 이식) ────────────────────────────
 
@@ -204,6 +211,9 @@ function BrowserViewImpl({
       if (decision === "pending") return "pending";
       lastRectRef.current = key;
       lastSentRef.current = performance.now();
+      // 송신 관측면 — "위상 중 이 표면에 아무도 쓰지 않는다"는 계약은 결과(착지 일치)만으로
+      // 증명되지 않는다. browser.surface.stats 가 이 누계를 노출하고 하니스가 위상 전후로 센다.
+      if (ctx.viewId) noteSurfaceWrite(ctx.viewId);
       void webview.bounds(label, led.x, led.y, w, h);
       return "sent";
     },
@@ -360,7 +370,10 @@ function BrowserViewImpl({
       // view.veiled 로 정확히 통지한다(아래). 여기서는 드래그(resize) 라이브 추종만 다룬다.
       const active = !!q.active;
       gestureRef.current = active;
-      if (!active) {
+      if (!active && !veiledRef.current) {
+        // 착지 주인은 하나다 — 스탠드인 뒤에 있는 표면의 착지는 해동 에지(view.veiled false)가
+        // 쓴다. 여기서도 강제로 쓰면 force 가 same-rect 를 관통하므로 위상마다 중복 IPC 와
+        // 중복 setFrame 이 나간다(실측: 착지 1 이어야 할 자리에 2).
         syncBounds(true);
         verifyAlive(); // 위상 끝 = 복귀 에지 — 생존 검증(멱등)
       }
@@ -373,6 +386,7 @@ function BrowserViewImpl({
       const q = p as { viewId?: string; veiled?: boolean };
       if (q.viewId !== ctx.viewId || !label || !webview) return;
       veiledRef.current = !!q.veiled;
+      if (ctx.viewId) noteSurfaceVeil(ctx.viewId, veiledRef.current);
       if (q.veiled) return; // 위상 중 이 표면에 쓰지 않는다(쓰기 주체 0)
       // 착지 = 유일한 쓰기 시점. 캐시를 비우고 강제 1회 — 스탠드인이 물러나기 전에 실좌표를
       // 확정한다(§4.5-4 종료 에지 정확 스냅).
