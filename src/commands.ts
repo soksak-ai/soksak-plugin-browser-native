@@ -56,8 +56,26 @@ export function registerLabel(viewId: string, label: string, getUrl: () => strin
   // view.activated 가 곧 확정하지만, 그 전에 즉시 명령이 와도 새 뷰를 친다.
   activeViewId = viewId;
 }
+
+// 최신 URL 미러 — mount 동기 등록의 getUrl 이 읽는다. BrowserView 가 이후 자기 클로저로
+// 재등록하며 이양하므로, 이 미러는 mount 직후 짧은 창의 사실만 책임진다.
+const liveUrls = new Map<string, string>();
+
+/**
+ * mount() 의 동기 경로에서 부른다 — React 이펙트가 아니라.
+ *
+ * 실측(2026-07-26): tab.open 이 마운트를 기다려 답했는데도 그 tabId 로 보낸 navigate 가
+ * NO_VIEW 였다(갓 부팅한 창). 코어의 mounted 신호는 provider.mount 반환이고, 등록이
+ * React 이펙트(페인트 후)에만 있으면 mounted:true 직후 명령이 미등록 창에 떨어진다.
+ * chromium 엔진의 registerViewAtMount 와 같은 계약이다.
+ */
+export function registerViewAtMount(viewId: string, label: string, initialUrl: string): void {
+  liveUrls.set(viewId, initialUrl);
+  registerLabel(viewId, label, () => liveUrls.get(viewId) ?? initialUrl);
+}
 export function unregisterLabel(viewId: string): void {
   activeViews.delete(viewId);
+  liveUrls.delete(viewId);
   surfaceStats.delete(viewId);
   if (activeViewId === viewId) activeViewId = null;
   if (lastMountedViewId === viewId) lastMountedViewId = null;
@@ -71,7 +89,7 @@ export function noteActivated(viewId: string): void {
 
 // 타겟 브라우저 해소: 명시 viewId(param) → 활성 뷰 → 마지막 마운트 → 첫 등록. 명시 viewId 가
 // 미등록이면 null(잘못된 타겟을 조용히 다른 뷰로 돌리지 않는다 — 명시는 정확해야 한다).
-function resolveEntry(explicitViewId?: string): ViewEntry | null {
+export function resolveEntry(explicitViewId?: string): ViewEntry | null {
   if (explicitViewId) return activeViews.get(explicitViewId) ?? null;
   if (activeViewId && activeViews.has(activeViewId)) {
     return activeViews.get(activeViewId)!;

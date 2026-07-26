@@ -13021,8 +13021,14 @@ function registerLabel(viewId, label, getUrl) {
   lastMountedViewId = viewId;
   activeViewId = viewId;
 }
+var liveUrls = /* @__PURE__ */ new Map();
+function registerViewAtMount(viewId, label, initialUrl) {
+  liveUrls.set(viewId, initialUrl);
+  registerLabel(viewId, label, () => liveUrls.get(viewId) ?? initialUrl);
+}
 function unregisterLabel(viewId) {
   activeViews.delete(viewId);
+  liveUrls.delete(viewId);
   surfaceStats.delete(viewId);
   if (activeViewId === viewId) activeViewId = null;
   if (lastMountedViewId === viewId) lastMountedViewId = null;
@@ -14179,6 +14185,7 @@ function injectStyles() {
 // src/plugin-entry.tsx
 var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
 var roots = /* @__PURE__ */ new WeakMap();
+var mountedViewOf = /* @__PURE__ */ new WeakMap();
 function mountInto(container, node) {
   injectStyles();
   unmountContainer(container);
@@ -14212,12 +14219,21 @@ var plugin_entry_default = {
             const pending = takePendingUrl();
             const rs = vctx.restore?.state;
             const url = pending ?? (typeof rs?.url === "string" && rs.url ? rs.url : null) ?? app.settings.get("homeUrl") ?? "about:blank";
+            if (vctx.viewId && app.webview) {
+              mountedViewOf.set(container, vctx.viewId);
+              registerViewAtMount(vctx.viewId, app.webview.label(vctx.viewId), url);
+            }
             mountInto(
               container,
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BrowserView, { app, ctx: vctx, initialUrl: url })
             );
           },
           unmount(container) {
+            const vid = mountedViewOf.get(container);
+            if (vid) {
+              mountedViewOf.delete(container);
+              unregisterLabel(vid);
+            }
             unmountContainer(container);
           },
           zoom(_container, vctx, action) {

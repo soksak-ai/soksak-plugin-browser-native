@@ -3,10 +3,12 @@
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserView } from "./browser-view";
 import { injectStyles } from "./styles";
-import { registerCommands, takePendingUrl } from "./commands";
+import { registerCommands, registerViewAtMount, takePendingUrl, unregisterLabel } from "./commands";
 import type { PluginContext, PluginViewContext } from "./host";
 
 const roots = new WeakMap<HTMLElement, Root>();
+// unmount 는 컨텍스트를 받지 않으므로 어떤 컨테이너가 어떤 뷰였는지 mount 가 적어 둔다.
+const mountedViewOf = new WeakMap<HTMLElement, string>();
 
 function mountInto(container: HTMLElement, node: React.ReactElement): void {
   injectStyles();
@@ -54,12 +56,25 @@ export default {
               (typeof rs?.url === "string" && rs.url ? rs.url : null) ??
               (app.settings.get("homeUrl") as string | undefined) ??
               "about:blank";
+            // 명령 타겟 등록은 mount 의 동기 경로에서 — 코어의 mounted 신호(tab.open
+            // mounted:true)는 mount 반환을 뜻하므로, 등록이 React 이펙트에만 있으면
+            // mounted 직후 명령이 NO_VIEW 로 죽는 창이 생긴다(실측: 갓 부팅한 창).
+            if (vctx.viewId && app.webview) {
+              mountedViewOf.set(container, vctx.viewId);
+              registerViewAtMount(vctx.viewId, app.webview.label(vctx.viewId), url);
+            }
             mountInto(
               container,
               <BrowserView app={app} ctx={vctx} initialUrl={url} />,
             );
           },
           unmount(container: HTMLElement) {
+            // 등록을 mount 가 했으니 해제도 여기서 한다(React cleanup 미실행 케이스 방어 — 멱등).
+            const vid = mountedViewOf.get(container);
+            if (vid) {
+              mountedViewOf.delete(container);
+              unregisterLabel(vid);
+            }
             unmountContainer(container);
           },
           zoom(_container: HTMLElement, vctx: PluginViewContext, action: "in" | "out" | "reset") {
