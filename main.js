@@ -13926,6 +13926,10 @@ function BrowserViewImpl({
   }, [label, webview, ctx]);
   (0, import_react.useEffect)(() => {
     if (!label || !webview) return;
+    {
+      const s0 = loadStatus(false);
+      ctx.setStatus({ code: s0.code, message: t(s0.messageKey, langRef.current) });
+    }
     const d = webview.on(label, "loading", (p) => {
       const s = loadStatus(!!p.loading);
       ctx.setStatus({ code: s.code, message: t(s.messageKey, langRef.current) });

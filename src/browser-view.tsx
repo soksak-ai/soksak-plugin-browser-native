@@ -501,6 +501,13 @@ function BrowserViewImpl({
   // 뷰 언마운트 시 status 를 회수(null) — 코어도 뷰 종속으로 회수하지만 명시적으로 해제한다.
   useEffect(() => {
     if (!label || !webview) return;
+    // 초기 상태를 즉시 보고 — loading 이벤트에만 기대면 이벤트가 안 오는 경로
+    // (about:blank 즉시 로드, 구독 전 완료)에서 mounted 인데 무보고로 남는다
+    // (실측: view-status 하니스 unreported=[tab] — C2 는 mounted 뷰의 보고를 요구한다).
+    {
+      const s0 = loadStatus(false);
+      ctx.setStatus({ code: s0.code, message: t(s0.messageKey, langRef.current) });
+    }
     const d = webview.on(label, "loading", (p) => {
       const s = loadStatus(!!p.loading);
       ctx.setStatus({ code: s.code, message: t(s.messageKey, langRef.current) });
