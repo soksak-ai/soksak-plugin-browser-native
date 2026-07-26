@@ -13626,6 +13626,7 @@ function BrowserViewImpl({
   const liveRef = (0, import_react.useRef)(false);
   const gestureRef = (0, import_react.useRef)(false);
   const lastSentRef = (0, import_react.useRef)(0);
+  const lastVisibleRef = (0, import_react.useRef)(true);
   const [localUrl, setLocalUrl] = (0, import_react.useState)(initialUrl);
   const localUrlRef = (0, import_react.useRef)(initialUrl);
   const [bmOpen, setBmOpen] = (0, import_react.useState)(false);
@@ -14021,7 +14022,7 @@ function BrowserViewImpl({
     tb?.setBookmarked(isBookmarked);
   }, [tb, isBookmarked]);
   if (!label || !webview) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "browser-view" });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "browser-view", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bv-engine-missing", children: !webview ? "\uBE0C\uB77C\uC6B0\uC800 \uC5D4\uC9C4 \uC5B4\uB311\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4 \u2014 app.webview \uBBF8\uC81C\uACF5(\uCF54\uC5B4 webview capability \uD655\uC778)" : "\uBE0C\uB77C\uC6B0\uC800 \uBDF0 \uB77C\uBCA8\uC774 \uC5C6\uC2B5\uB2C8\uB2E4 \u2014 viewId \uBBF8\uC804\uB2EC" }) });
   }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "browser-view", children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: tbHostRef, style: { flex: "0 0 auto" } }),
@@ -14080,6 +14081,7 @@ var BrowserView = (0, import_react.memo)(BrowserViewImpl);
 
 // src/styles.ts
 var GLOBAL_CSS = `
+.bv-engine-missing { display:flex; align-items:center; justify-content:center; height:100%; padding:16px; text-align:center; color:#c66; font-size:12px; opacity:.8; }
 .browser-view {
   display: flex;
   flex-direction: column;
@@ -14227,6 +14229,8 @@ var plugin_entry_default = {
             if (vctx.viewId && app.webview) {
               mountedViewOf.set(container, vctx.viewId);
               registerViewAtMount(vctx.viewId, app.webview.label(vctx.viewId), url);
+            } else if (vctx.viewId) {
+              vctx.setStatus?.({ code: "error", message: "browser engine adapter missing (app.webview)" });
             }
             mountInto(
               container,

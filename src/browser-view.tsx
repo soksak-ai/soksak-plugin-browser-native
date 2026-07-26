@@ -105,6 +105,8 @@ function BrowserViewImpl({
   // 마지막으로 네이티브 bounds 를 보낸 시각(드래그 중 ~30Hz 스로틀 기준).
   const lastSentRef = useRef(0);
   // 최신 visible 값 — open 완료 시점에 재적용(생성 경쟁 보정).
+  // 가시성 장부 — 마운트 시점 실측으로 초기화(open effect), open 완료 재적용이 읽는다.
+  const lastVisibleRef = useRef(true);
   // 재적용은 추측이 아니라 장부(lastVisibleRef)의 현재 사실이다: "항상 visible=true" 가정은
   // 복원 마운트의 파킹 뷰에서 틀린다 — open 진행 중 코어 view.parked(true)가 장부를 false 로
   // 내렸는데 완료가 true 를 강제하면, 이후 파킹 이벤트는 변화 없음으로 조기 반환해 표면이
