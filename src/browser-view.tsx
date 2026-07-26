@@ -105,7 +105,10 @@ function BrowserViewImpl({
   // 마지막으로 네이티브 bounds 를 보낸 시각(드래그 중 ~30Hz 스로틀 기준).
   const lastSentRef = useRef(0);
   // 최신 visible 값 — open 완료 시점에 재적용(생성 경쟁 보정).
-  // 콘텐츠 배치에서는 항상 visible=true. 탭 전환 숨김은 코어가 처리한다.
+  // 재적용은 추측이 아니라 장부(lastVisibleRef)의 현재 사실이다: "항상 visible=true" 가정은
+  // 복원 마운트의 파킹 뷰에서 틀린다 — open 진행 중 코어 view.parked(true)가 장부를 false 로
+  // 내렸는데 완료가 true 를 강제하면, 이후 파킹 이벤트는 변화 없음으로 조기 반환해 표면이
+  // 영영 안 숨겨진다(실사고: reload 후 파킹 브라우저가 홀 위에 겹침 — surface.misplaced).
   const [localUrl, setLocalUrl] = useState(initialUrl);
   // reload 명령이 최신 URL 에 접근할 수 있도록 ref 동기화(클로저 스탈 방지).
   const localUrlRef = useRef(initialUrl);
@@ -240,6 +243,10 @@ function BrowserViewImpl({
     }
     let closed = false;
     const r = el.getBoundingClientRect();
+    // 장부 초기화 — 마운트 시점의 실측(추측 금지). 복원 마운트의 파킹 뷰는 슬롯이 화면 밖
+    // (-200vw)인데 초기값 true 로 두면, IO/view.parked 의 첫 판정보다 open 완료가 빠를 때
+    // 재적용이 true 를 쏴 파킹 표면이 홀 위에 드러난다(chromium 실사고와 동형).
+    lastVisibleRef.current = !(r.right <= 0 || r.left >= window.innerWidth);
     stamp("invoking");
     webview
       .open(label, {
@@ -257,8 +264,9 @@ function BrowserViewImpl({
         }
         stamp("opened");
         openedRef.current = true;
-        // 생성 경쟁 보정: open 완료 후 현재 visible 재적용
-        void webview.visible(label, true).catch(() => {});
+        // 생성 경쟁 보정: open 완료 후 장부의 현재 사실을 재적용(파킹이면 숨김 유지 —
+        // 유효 가시성의 단일 소유자는 코어다, 제공자는 추측하지 않는다).
+        void webview.visible(label, lastVisibleRef.current).catch(() => {});
         syncBounds();
       })
       .catch((e: unknown) => {

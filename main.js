@@ -13747,6 +13747,7 @@ function BrowserViewImpl({
     }
     let closed = false;
     const r = el.getBoundingClientRect();
+    lastVisibleRef.current = !(r.right <= 0 || r.left >= window.innerWidth);
     stamp("invoking");
     webview.open(label, {
       url: localUrl,
@@ -13763,7 +13764,7 @@ function BrowserViewImpl({
       }
       stamp("opened");
       openedRef.current = true;
-      void webview.visible(label, true).catch(() => {
+      void webview.visible(label, lastVisibleRef.current).catch(() => {
       });
       syncBounds();
     }).catch((e) => {
