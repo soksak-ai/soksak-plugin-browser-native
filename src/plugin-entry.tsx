@@ -62,6 +62,9 @@ export default {
             if (vctx.viewId && app.webview) {
               mountedViewOf.set(container, vctx.viewId);
               registerViewAtMount(vctx.viewId, app.webview.label(vctx.viewId), url);
+            } else if (vctx.viewId) {
+              // 침묵 실패 금지 — 어댑터 부재는 status 축으로도 보고한다(화면 카드와 별개 채널).
+              vctx.setStatus?.({ code: "error", message: "browser engine adapter missing (app.webview)" });
             }
             mountInto(
               container,

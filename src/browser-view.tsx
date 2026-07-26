@@ -612,7 +612,17 @@ function BrowserViewImpl({
   useEffect(() => { tb?.setBookmarked(isBookmarked); }, [tb, isBookmarked]);
 
   if (!label || !webview) {
-    return <div className="browser-view" />;
+    // 침묵 실패 금지 — 어댑터/라벨 부재는 결함 사실이다. 빈 공간이 아니라 사유를 그리고
+    // status 로 보고한다(§0-4). 예전의 빈 <div> 는 "주소창도 없는 검은 페인"으로만 보였다.
+    return (
+      <div className="browser-view">
+        <div className="bv-engine-missing">
+          {!webview
+            ? "브라우저 엔진 어댑터가 없습니다 — app.webview 미제공(코어 webview capability 확인)"
+            : "브라우저 뷰 라벨이 없습니다 — viewId 미전달"}
+        </div>
+      </div>
+    );
   }
 
   return (

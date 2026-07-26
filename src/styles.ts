@@ -1,6 +1,7 @@
 // browser 플러그인 전역 CSS — 단일 <style> 1회 주입.
 // .bv-* 셀렉터는 코어 App.css 에서 그대로 이식(선택자 변경 없음).
-// 컨테이너(.browser-view)는 투명(레이어 원칙) — .bv-area 가 홀이라 아래 webview 가 비친다.
+// 컨테이너(.browser-view)는 투명(레이어 원칙) — .bv-engine-missing { display:flex; align-items:center; justify-content:center; height:100%; padding:16px; text-align:center; color:#c66; font-size:12px; opacity:.8; }
+.bv-area 가 홀이라 아래 webview 가 비친다.
 export const GLOBAL_CSS = `
 .browser-view {
   display: flex;
