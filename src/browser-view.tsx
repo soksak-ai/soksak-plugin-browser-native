@@ -526,7 +526,7 @@ function BrowserViewImpl({
       if (!app.commands) return;
       setPendingUrl(url);
       const out = await app.commands
-        .execute("view.open", { program: "browser" })
+        .execute("tab.open", { program: "browser" })
         .catch(() => null);
       if (!out || !out.ok) {
         // 실패 시 대기 URL 을 드레인(null 로)해 다음 mount 가 잘못 소비하지 않게 하고,

@@ -283,16 +283,16 @@ export function registerCommands(ctx: PluginContext): void {
         if (!app.commands) return { ok: false, code: "INTERNAL", message: "commands API 없음" };
         const url = typeof p.url === "string" && p.url.length > 0 ? p.url : undefined;
         if (url) setPendingUrl(url);
-        const out = await app.commands.execute("view.open", { program: "browser" });
+        const out = await app.commands.execute("tab.open", { program: "browser" });
         if (!out.ok) {
           // 실패 시 대기 URL 회수(다음 mount 가 잘못 소비하지 않게).
           if (url) takePendingUrl();
-          return { ok: false, code: "VIEW_OPEN_FAILED", message: String(out.error ?? "view.open 실패") };
+          return { ok: false, code: "VIEW_OPEN_FAILED", message: String(out.error ?? "tab.open 실패") };
         }
         // 코어 명령의 답은 봉투다 — 사실은 data 안에 있다(MESSAGE-PROTOCOL). 평면으로 읽으면
         // 뷰는 열리는데 그 뷰의 id 를 아무도 못 받는다: 소비자가 다시 그 뷰를 가리킬 방법이 없다.
-        const opened = (out.data ?? out) as { viewId?: string; panelId?: string };
-        return { ok: true, viewId: opened.viewId, panelId: opened.panelId };
+        const opened = (out.data ?? out) as { tabId?: string; paneId?: string };
+        return { ok: true, viewId: opened.tabId, panelId: opened.paneId };
       },
     }),
   );

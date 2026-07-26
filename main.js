@@ -13203,13 +13203,13 @@ function registerCommands(ctx) {
         if (!app.commands) return { ok: false, code: "INTERNAL", message: "commands API \uC5C6\uC74C" };
         const url = typeof p.url === "string" && p.url.length > 0 ? p.url : void 0;
         if (url) setPendingUrl(url);
-        const out = await app.commands.execute("view.open", { program: "browser" });
+        const out = await app.commands.execute("tab.open", { program: "browser" });
         if (!out.ok) {
           if (url) takePendingUrl();
-          return { ok: false, code: "VIEW_OPEN_FAILED", message: String(out.error ?? "view.open \uC2E4\uD328") };
+          return { ok: false, code: "VIEW_OPEN_FAILED", message: String(out.error ?? "tab.open \uC2E4\uD328") };
         }
         const opened = out.data ?? out;
-        return { ok: true, viewId: opened.viewId, panelId: opened.panelId };
+        return { ok: true, viewId: opened.tabId, panelId: opened.paneId };
       }
     })
   );
@@ -13939,7 +13939,7 @@ function BrowserViewImpl({
       }
       if (!app.commands) return;
       setPendingUrl(url);
-      const out = await app.commands.execute("view.open", { program: "browser" }).catch(() => null);
+      const out = await app.commands.execute("tab.open", { program: "browser" }).catch(() => null);
       if (!out || !out.ok) {
         takePendingUrl();
         if (label && webview) void webview.navigate(label, url).catch(() => {
