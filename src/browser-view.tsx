@@ -202,12 +202,15 @@ function BrowserViewImpl({
           });
       prevSampleRef.current = { x, y };
       const key = `${led.x},${led.y},${w},${h}`;
+      const [, , lw, lh] = (lastRectRef.current || "0,0,0,0").split(",").map(Number);
+      const shrinking = lastRectRef.current !== "" && (w < lw || h < lh);
       // 커밋 판정은 순수 정책(bounds-follow.ts)이 소유 — gesture 는 유예를 만들지 않는다(실시간 계약).
       const decision = boundsCommitDecision({
         force,
         live: liveRef.current,
         gesture: gestureRef.current,
         veiled: veiledRef.current,
+        shrinking,
         sameRect: key === lastRectRef.current,
         msSinceLast: performance.now() - lastSentRef.current,
         throttleMs: LIVE_THROTTLE_MS,

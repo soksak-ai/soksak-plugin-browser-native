@@ -30,11 +30,15 @@ export function boundsCommitDecision(i: {
   live: boolean;
   gesture: boolean;
   veiled?: boolean;
+  /** 새 슬롯이 마지막으로 보낸 것보다 어느 축이든 작다 — 포함 불변식. */
+  shrinking?: boolean;
   sameRect: boolean;
   msSinceLast: number;
   throttleMs: number;
 }): "send" | "skip" | "pending" {
   if (i.force) return "send";
+  // 포함 불변식 — 슬롯이 작아지면 무엇도 유예하지 않는다(표면이 슬롯을 넘는 것은 침범이다).
+  if (i.shrinking && !i.sameRect) return "send";
   if (i.veiled) return "skip";
   if (i.sameRect) return "skip";
   if (i.live && i.msSinceLast < i.throttleMs) return "pending";

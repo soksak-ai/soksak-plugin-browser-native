@@ -127,3 +127,14 @@ describe("착지 정확 스냅과 스탠드인 침묵", () => {
     ).toBe("send");
   });
 });
+
+// 포함 불변식(2026-07-27) — 축소는 veil·스로틀을 관통한다. 표면이 슬롯을 넘으면 이웃 칸을 덮는다.
+describe("containment invariant", () => {
+  const base = { force: false, live: false, gesture: true, sameRect: false, msSinceLast: 0, throttleMs: 33 };
+  it("veiled 여도 축소는 즉시", () => {
+    expect(boundsCommitDecision({ ...base, veiled: true, shrinking: true })).toBe("send");
+  });
+  it("확대는 종전 계약(veil 이면 스킵)", () => {
+    expect(boundsCommitDecision({ ...base, veiled: true, shrinking: false })).toBe("skip");
+  });
+});
