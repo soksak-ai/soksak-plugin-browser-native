@@ -12953,6 +12953,14 @@ function loadStatus(loading) {
   return loading ? { code: "busy", messageKey: "statusLoading" } : { code: "ready", messageKey: "statusReady" };
 }
 
+// src/view-visibility.ts
+function visibleFromComputedStyle(style) {
+  return style.visibility !== "hidden" && style.display !== "none";
+}
+function visibleFromAnchor(anchor) {
+  return visibleFromComputedStyle(getComputedStyle(anchor));
+}
+
 // src/i18n.ts
 var EN = {
   back: "Back",
@@ -13752,7 +13760,7 @@ function BrowserViewImpl({
     }
     let closed = false;
     const r = el.getBoundingClientRect();
-    lastVisibleRef.current = !(r.right <= 0 || r.left >= window.innerWidth);
+    lastVisibleRef.current = visibleFromAnchor(el);
     stamp("invoking");
     webview.open(label, {
       url: localUrl,

@@ -13,6 +13,7 @@ import type { BrowserToolbar } from "soksak-kit-browser-common";
 import type { PluginApi, PluginViewContext } from "./host";
 import { boundsCommitDecision, followShouldContinue, leadPosition } from "./bounds-follow";
 import { loadStatus } from "./view-status";
+import { visibleFromAnchor } from "./view-visibility";
 import { t } from "./i18n";
 import {
   noteSurfaceVeil,
@@ -248,10 +249,10 @@ function BrowserViewImpl({
     }
     let closed = false;
     const r = el.getBoundingClientRect();
-    // 장부 초기화 — 마운트 시점의 실측(추측 금지). 복원 마운트의 파킹 뷰는 슬롯이 화면 밖
-    // (-200vw)인데 초기값 true 로 두면, IO/view.parked 의 첫 판정보다 open 완료가 빠를 때
-    // 재적용이 true 를 쏴 파킹 표면이 홀 위에 드러난다(chromium 실사고와 동형).
-    lastVisibleRef.current = !(r.right <= 0 || r.left >= window.innerWidth);
+    // 장부 초기화 — 조상까지 반영된 DOM 계산 가시성이 정본이다. 좌표는 가시성의 대리값이
+    // 아니다: 문서 안 콘텐츠는 DOM 수명을 유지한 채 visibility로 파킹하므로 화면 안 rect를
+    // 그대로 가진다. 좌표로 추측하면 비활성 프로젝트·탭을 visible=true로 되살린다.
+    lastVisibleRef.current = visibleFromAnchor(el);
     stamp("invoking");
     webview
       .open(label, {
