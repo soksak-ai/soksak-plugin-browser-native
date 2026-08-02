@@ -688,8 +688,11 @@ function BrowserViewImpl({
           ))}
         </div>
       )}
-      {/* child webview 가 이 영역 위에 정렬된다(레이어 원칙: DOM 아래 네이티브). */}
-      <div className="bv-area" ref={areaRef} />
+      {/* 이 뷰가 사는 자리. `data-content-view-slot` 은 코어에게 "이 label 은 여기다"라고
+          말한다 — 콘텐츠가 문서 안인 프레임워크에서는 코어가 표면을 이 자리의 자식으로 두고,
+          그러면 자리가 움직일 때 표면도 같이 움직인다(좌표를 쓰는 쪽이 없다). 콘텐츠가 문서
+          밖인 프레임워크에서는 같은 자리가 bounds 추종의 앵커다. 선언은 하나, 쓰는 쪽이 둘이다. */}
+      <div className="bv-area" ref={areaRef} data-content-view-slot={label || undefined} />
     </div>
   );
 }
