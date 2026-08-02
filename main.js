@@ -13897,6 +13897,7 @@ function BrowserViewImpl({
     const d1 = webview.on(label, "nav", (p) => {
       const url = p.url;
       setLocalUrl(url);
+      if (p.inPage) return;
       if (url) {
         let t2 = url;
         try {
