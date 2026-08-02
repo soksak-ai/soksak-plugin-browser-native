@@ -14079,7 +14079,7 @@ function BrowserViewImpl({
         b.url
       ))
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bv-area", ref: areaRef })
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "bv-area", ref: areaRef, "data-content-view-body": label || void 0 })
   ] });
 }
 var BrowserView = (0, import_react.memo)(BrowserViewImpl);
