@@ -165,38 +165,6 @@ export function waitForSelector(
   });
 }
 
-/** 이동 명령의 완료는 IPC write가 아니라 새 document의 loading=false 사건이다. */
-export async function navigateAndWaitForLoad(
-  webview: WebviewApi,
-  label: string,
-  url: string,
-  timeoutMs: number,
-): Promise<{ loaded: boolean }> {
-  let finish!: (loaded: boolean) => void;
-  const loaded = new Promise<{ loaded: boolean }>((resolve) => {
-    let settled = false;
-    let subscription: { dispose(): void } | null = null;
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    finish = (value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      subscription?.dispose();
-      resolve({ loaded: value });
-    };
-    subscription = webview.on(label, "loading", (payload) => {
-      if (payload.loading === false) finish(true);
-    });
-  });
-  try {
-    await webview.navigate(label, url);
-  } catch (error) {
-    finish(false);
-    throw error;
-  }
-  return loaded;
-}
-
 // 비-macOS(eval 미지원)에서 graceful 에러 — 호출측이 ok:false 로 표면화.
 const NON_MACOS_EVAL_ERR = "eval is macOS-only (WKWebView callAsyncJavaScript)";
 
@@ -230,7 +198,6 @@ export function registerCommands(ctx: PluginContext): void {
       triggers: { ko: "브라우저 이동 URL 열기" },
       params: {
         url: { type: "string", description: "URL to navigate to", required: true },
-        timeoutMs: { type: "number", description: "Finite page-load deadline in milliseconds", required: false },
         ...targetParam,
       },
       returns: "{ ok, viewId? }",
@@ -245,19 +212,7 @@ export function registerCommands(ctx: PluginContext): void {
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
-        const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 8000;
-        if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) {
-          return { ok: false, code: "INVALID_PARAMS", message: "timeoutMs must be 1..60000" };
-        }
-        const outcome = await navigateAndWaitForLoad(
-          app.webview,
-          entry.label,
-          String(p.url ?? ""),
-          timeoutMs,
-        );
-        if (!outcome.loaded) {
-          return { ok: false, code: "TIMEOUT", message: `page load timed out after ${timeoutMs}ms` };
-        }
+        await app.webview.navigate(entry.label, String(p.url ?? ""));
         return { ok: true, viewId: entry.viewId };
       },
     }),
