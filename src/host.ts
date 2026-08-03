@@ -69,13 +69,6 @@ export interface WebviewApi {
   /** content-view 생성. 공개 슬롯이 있으면 호스트가 배치를 소유한다.
    *  좌표는 슬롯 없는 오프스크린 표면에만 명시한다. */
   open: (label: string, o: { url: string; x?: number; y?: number; w?: number; h?: number }) => Promise<void>;
-  /** 슬롯 rect 동기화(분할/리사이즈 — 프레임당 1회 권장). */
-  bounds: (label: string, x: number, y: number, w: number, h: number) => Promise<void>;
-  /** 표시/숨김(탭 전환·최대화의 숨김 슬롯). */
-  /** focus:false = 표현 전용 복귀(코어 슬롯 동결 해동 등) — responder 를 건드리지 않는다. */
-  visible: (label: string, visible: boolean, focus?: boolean) => Promise<void>;
-  /** 실물 생존(native view 창 부착) — 구코어엔 없다(호출측이 부재를 건강으로 폴백). */
-  alive?: (label: string) => Promise<boolean>;
   /** URL 이동. */
   navigate: (label: string, url: string) => Promise<void>;
   /** 뷰-단위 페이지 줌(0.25..4.0) — 유효 배율 = 창 줌 × 이 값. */
@@ -108,9 +101,6 @@ export interface WebviewApi {
   list: (prefix?: string) => Promise<string[]>;
   /** webview 종료 + 정리. */
   close: (label: string) => Promise<void>;
-  /** 창 합성 캡처를 rect(CSS px, 창 좌표)로 crop 한 PNG data URL. 가림 상태에서도 캡처.
-   *  드래그 중 네이티브 표면의 시각 연속 스탠드인(freeze-frame — layout.resize-gesture 와 짝). */
-  captureRegion: (rect: { x: number; y: number; w: number; h: number }) => Promise<string>;
 }
 
 // app.data.kv — 즐겨찾기 저장에 쓰는 표면만.

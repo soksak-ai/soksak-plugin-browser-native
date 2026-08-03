@@ -33,4 +33,11 @@ describe("브라우저 제품과 프레임워크 합성의 경계", () => {
     expect(read("src/commands.ts")).not.toContain("surface.stats");
     expect(read("plugin.json")).not.toContain('"surface.stats"');
   });
+
+  it("제품 플러그인의 호스트 타입도 셸 합성 명령을 재선언하지 않는다", () => {
+    const host = read("src/host.ts");
+    for (const method of ["bounds", "visible", "alive", "captureRegion"]) {
+      expect(host, method).not.toMatch(new RegExp(`^\\s*${method}\\??\\s*:`, "m"));
+    }
+  });
 });
