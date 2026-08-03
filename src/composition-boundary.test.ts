@@ -30,6 +30,13 @@ describe("브라우저 제품과 프레임워크 합성의 경계", () => {
     }
   });
 
+  it("manifest도 과거 합성 hack DOM을 선언하지 않는다", () => {
+    const manifest = read("plugin.json");
+    for (const forbidden of ["freeze-frame", '"id": "freeze"', "stand-in", "veil"]) {
+      expect(manifest, `${forbidden} 는 Tauri adapter 밖에 남을 수 없다`).not.toContain(forbidden);
+    }
+  });
+
   it("합성 상태 명령은 제품 플러그인에 재선언하지 않는다", () => {
     expect(read("src/commands.ts")).not.toContain("surface.stats");
     expect(read("plugin.json")).not.toContain('"surface.stats"');

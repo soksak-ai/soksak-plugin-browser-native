@@ -309,13 +309,6 @@
         }
       },
       {
-        "id": "freeze",
-        "description": {
-          "ko": "디바이더 드래그 중 시각 연속 스탠드인(freeze-frame) 오버레이",
-          "en": "Visual-continuity stand-in (freeze-frame) overlay during divider drag"
-        }
-      },
-      {
         "id": "home",
         "description": {
           "ko": "홈",
