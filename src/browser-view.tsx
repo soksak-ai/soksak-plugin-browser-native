@@ -412,7 +412,12 @@ function BrowserViewImpl({
           말한다 — 콘텐츠가 문서 안인 프레임워크에서는 코어가 표면을 이 자리의 자식으로 두고,
           그러면 자리가 움직일 때 표면도 같이 움직인다(좌표를 쓰는 쪽이 없다). 콘텐츠가 문서
           밖인 프레임워크에서는 같은 자리가 bounds 추종의 앵커다. 선언은 하나, 쓰는 쪽이 둘이다. */}
-      <div className="bv-area" ref={areaRef} data-content-view-body={label || undefined} />
+      <div
+        className="bv-area"
+        ref={areaRef}
+        data-node="surface"
+        data-content-view-body={label || undefined}
+      />
     </div>
   );
 }
