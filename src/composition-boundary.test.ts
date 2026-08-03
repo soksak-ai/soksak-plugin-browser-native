@@ -14,6 +14,7 @@ describe("브라우저 제품과 프레임워크 합성의 경계", () => {
   it("뷰는 공개 슬롯만 선언하고 bounds·veil·추종 정책을 소유하지 않는다", () => {
     const source = read("src/browser-view.tsx");
     expect(source).toContain("data-content-view-body");
+    expect(source).toContain('data-node="surface"');
     for (const forbidden of [
       "requestAnimationFrame",
       "ResizeObserver",
