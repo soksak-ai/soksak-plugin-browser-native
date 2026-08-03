@@ -1,37 +1,19 @@
-// 브라우저 콘텐츠 뷰 — 코어 native child webview(WKWebView) 를 플러그인에서 직접 구동.
-// BrowserView.tsx(코어) 의 충실한 이식:
-//   - app.webview.* API 로 invoke 교체
-//   - ctx.viewId 로 label 파생
-//   - app.data.kv 로 즐겨찾기 저장(key: bm:<url>)
-//   - useSessions 구독 제거 → ResizeObserver + window resize 로 대체
-//   - 아이콘: lucide-style inline SVG(코어 Icon 컴포넌트 비의존)
+// 브라우저 제품 뷰. 플러그인은 브라우저 크롬·탐색·자동화와 공개 content-view 슬롯만 소유한다.
+// 슬롯을 DOM 자식으로 채울지, 문서 밖 표면을 좌표로 합성할지는 선택된 호스트 어댑터의 책임이다.
 
 import { memo, useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createBrowserToolbar } from "soksak-kit-browser-common";
 import type { BrowserToolbar } from "soksak-kit-browser-common";
 import type { PluginApi, PluginViewContext } from "./host";
-import { boundsCommitDecision, followShouldContinue, leadPosition } from "./bounds-follow";
 import { loadStatus } from "./view-status";
-import { visibleFromAnchor } from "./view-visibility";
 import { t } from "./i18n";
 import {
-  noteSurfaceVeil,
-  noteSurfaceWrite,
   registerLabel,
   unregisterLabel,
   setPendingUrl,
   takePendingUrl,
 } from "./commands";
-
-// ── IME 조합 중 Enter 무시 (코어 imeKeys.ts 이식) ────────────────────────────
-
-// 드래그(라이브 리사이즈) 중 네이티브 webview 재배치 상한. WKWebView set_size 는 비싸서
-// 매 프레임(60~120Hz) 호출하면 OS 자체 라이브 리사이즈와 겹쳐 CPU 가 폭발한다 → ~30Hz 로
-// 제한하고 드래그 끝에 정확한 최종 rect 로 1회 스냅한다(시각 추종은 유지).
-const LIVE_THROTTLE_MS = 32;
-// 슬롯 rect 가 이 프레임 수만큼 연속 무변화면(=드래그 아님) 추종 루프를 멈춘다(idle 폴링 0).
-const STABLE_STOP_FRAMES = 4;
 
 // ── URL 정규화 (코어 BrowserView.tsx 와 동일) ────────────────────────────────
 function normalizeUrl(input: string): string {
@@ -87,31 +69,6 @@ function BrowserViewImpl({
   const label = ctx.viewId && webview ? webview.label(ctx.viewId) : null;
 
   const areaRef = useRef<HTMLDivElement>(null);
-  const openedRef = useRef(false);
-  const lastRectRef = useRef("");
-  // child 생존 자가치유 — openedRef 가 참인데 실물 webview 가 없으면(레지스트리 대조) 재개방한다.
-  // 근거(실사고): open 이 전제조건 미비로 조기 반환하거나 실물이 외부 사정으로 닫히면, 마운트는
-  // 열림을 믿은 채 빈 홀만 남는다. 신호는 활성 복귀 에지에서만 검사한다(폴링 아님).
-  const [openEpoch, setOpenEpoch] = useState(0);
-  // 직전 rAF 실측(선행 외삽용) — 송신 여부와 무관하게 매 측정마다 갱신한다(속도 = 표시 타임라인).
-  const prevSampleRef = useRef<{ x: number; y: number } | null>(null);
-  // 코어 스탠드인이 이 표면을 덮고 있는가(view.veiled) — 위상 중 쓰기 금지의 단일 게이트.
-  const veiledRef = useRef(false);
-  // 라이브 리사이즈(가장자리 드래그) 진행 여부 — 코어 app.events("window.live-resize") 게이트.
-  const liveRef = useRef(false);
-  // 디바이더 드래그(layout.resize-gesture) 진행 여부 — 드래그 내내 추종 루프를 살려두는 게이트.
-  // 드래그 중에도 bounds 를 매 프레임 커밋해 DOM 분할과 네이티브 webview 가 실시간으로 일치한다
-  // (freeze-frame 정지 사진은 폐기 — 실시간 미반영·잔상의 근원이었다).
-  const gestureRef = useRef(false);
-  // 마지막으로 네이티브 bounds 를 보낸 시각(드래그 중 ~30Hz 스로틀 기준).
-  const lastSentRef = useRef(0);
-  // 최신 visible 값 — open 완료 시점에 재적용(생성 경쟁 보정).
-  // 가시성 장부 — 마운트 시점 실측으로 초기화(open effect), open 완료 재적용이 읽는다.
-  const lastVisibleRef = useRef(true);
-  // 재적용은 추측이 아니라 장부(lastVisibleRef)의 현재 사실이다: "항상 visible=true" 가정은
-  // 복원 마운트의 파킹 뷰에서 틀린다 — open 진행 중 코어 view.parked(true)가 장부를 false 로
-  // 내렸는데 완료가 true 를 강제하면, 이후 파킹 이벤트는 변화 없음으로 조기 반환해 표면이
-  // 영영 안 숨겨진다(실사고: reload 후 파킹 브라우저가 홀 위에 겹침 — surface.misplaced).
   const [localUrl, setLocalUrl] = useState(initialUrl);
   // reload 명령이 최신 URL 에 접근할 수 있도록 ref 동기화(클로저 스탈 방지).
   const localUrlRef = useRef(initialUrl);
@@ -177,58 +134,6 @@ function BrowserViewImpl({
     localUrlRef.current = localUrl;
   }, [localUrl]);
 
-  // bounds 측정+전송. 반환: "sent"=네이티브로 보냄 / "pending"=변화 있으나 드래그 스로틀로
-  // 보류(다음 프레임 재시도) / "same"=무변화. 동일 rect 는 IPC 를 보내지 않고(skip), 드래그
-  // 중(liveRef)엔 네이티브 재배치를 LIVE_THROTTLE_MS(~30Hz)로 제한한다. force=드래그 끝의
-  // 정확 스냅(스로틀 무시).
-  const syncBounds = useCallback(
-    (force = false): "sent" | "pending" | "same" => {
-      const el = areaRef.current;
-      if (!el || !openedRef.current || !webview || !label) return "same";
-      const r = el.getBoundingClientRect();
-      // 정수 스냅: rect 소수점 → 네이티브 반올림이 홀과 어긋남 방지(ceil/floor).
-      const x = Math.ceil(r.left);
-      const y = Math.ceil(r.top);
-      const w = Math.max(1, Math.floor(r.right) - x);
-      const h = Math.max(1, Math.floor(r.bottom) - y);
-      // 모션 위상(gesture) 중엔 1프레임 선행 위치를 보낸다(leadPosition — 표시 지연 상쇄).
-      // force(위상 끝 정확 스냅)는 실측 그대로 — 착지 정확성이 외삽보다 우선한다.
-      const led = force
-        ? { x, y }
-        : leadPosition({
-            prev: prevSampleRef.current,
-            cur: { x, y },
-            moving: gestureRef.current,
-            teleportPx: 200,
-          });
-      prevSampleRef.current = { x, y };
-      const key = `${led.x},${led.y},${w},${h}`;
-      const [, , lw, lh] = (lastRectRef.current || "0,0,0,0").split(",").map(Number);
-      const shrinking = lastRectRef.current !== "" && (w < lw || h < lh);
-      // 커밋 판정은 순수 정책(bounds-follow.ts)이 소유 — gesture 는 유예를 만들지 않는다(실시간 계약).
-      const decision = boundsCommitDecision({
-        force,
-        live: liveRef.current,
-        gesture: gestureRef.current,
-        veiled: veiledRef.current,
-        shrinking,
-        sameRect: key === lastRectRef.current,
-        msSinceLast: performance.now() - lastSentRef.current,
-        throttleMs: LIVE_THROTTLE_MS,
-      });
-      if (decision === "skip") return "same";
-      if (decision === "pending") return "pending";
-      lastRectRef.current = key;
-      lastSentRef.current = performance.now();
-      // 송신 관측면 — "위상 중 이 표면에 아무도 쓰지 않는다"는 계약은 결과(착지 일치)만으로
-      // 증명되지 않는다. browser.surface.stats 가 이 누계를 노출하고 하니스가 위상 전후로 센다.
-      if (ctx.viewId) noteSurfaceWrite(ctx.viewId);
-      void webview.bounds(label, led.x, led.y, w, h);
-      return "sent";
-    },
-    [webview, label],
-  );
-
   // 최초 1회 webview 생성 + 언마운트 정리.
   // 비동기 open 전에 언마운트 → closed 플래그로 늦은 생성 즉시 회수(고아 방지).
   useEffect(() => {
@@ -248,20 +153,9 @@ function BrowserViewImpl({
       return;
     }
     let closed = false;
-    const r = el.getBoundingClientRect();
-    // 장부 초기화 — 조상까지 반영된 DOM 계산 가시성이 정본이다. 좌표는 가시성의 대리값이
-    // 아니다: 문서 안 콘텐츠는 DOM 수명을 유지한 채 visibility로 파킹하므로 화면 안 rect를
-    // 그대로 가진다. 좌표로 추측하면 비활성 프로젝트·탭을 visible=true로 되살린다.
-    lastVisibleRef.current = visibleFromAnchor(el);
     stamp("invoking");
     webview
-      .open(label, {
-        url: localUrl,
-        x: r.left,
-        y: r.top,
-        w: Math.max(1, r.width),
-        h: Math.max(1, r.height),
-      })
+      .open(label, { url: localUrl })
       .then(() => {
         if (closed) {
           stamp("closed-during-open");
@@ -269,11 +163,6 @@ function BrowserViewImpl({
           return;
         }
         stamp("opened");
-        openedRef.current = true;
-        // 생성 경쟁 보정: open 완료 후 장부의 현재 사실을 재적용(파킹이면 숨김 유지 —
-        // 유효 가시성의 단일 소유자는 코어다, 제공자는 추측하지 않는다).
-        void webview.visible(label, lastVisibleRef.current).catch(() => {});
-        syncBounds();
       })
       .catch((e: unknown) => {
         stamp(`error:${String(e).slice(0, 80)}`);
@@ -286,181 +175,11 @@ function BrowserViewImpl({
 
     return () => {
       closed = true;
-      openedRef.current = false;
       unregisterLabel(ctx.viewId!);
       void webview.close(label).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [label, openEpoch]);
-
-  // 활성 복귀 에지의 생존 검증 — 열림을 믿는 상태와 실물(webview.list)이 어긋나면 epoch 를
-  // 올려 open 이펙트를 재구동한다(cleanup 이 잔재를 회수하고 새로 연다). 멱등: 정상이면 무동작.
-  const verifyAlive = useCallback(() => {
-    if (!label || !webview) return;
-    // 실물 생존 표면(webview.alive) — list/visible 은 registry 기준이라 좀비(라벨 생존·실물
-    // 사망)를 건강 오판한다. openedRef 를 가드하지 않는다 — 원 open 이 조기 실패한 마운트도
-    // 치유 대상이다. 진행 중 open 과의 경합은 이펙트의 closed 플래그가 회수한다(고아 방지).
-    const probe = webview.alive
-      ? webview.alive(label)
-      : webview.list("b-").then((labels) => labels.includes(label));
-    void probe
-      .then((ok) => {
-        if (!ok) {
-          openedRef.current = false;
-          setOpenEpoch((e) => e + 1);
-        }
-      })
-      .catch(() => {});
-  }, [label, webview]);
-
-  // bounds 구동원 — 네이티브 webview 가 DOM 슬롯(.bv-area)을 추종한다. DOM 엔 "위치 이동"
-  // 이벤트가 없어(ResizeObserver 는 크기만) 추종에 rAF 가 필요하지만, 영구 60fps rAF 폴링은
-  // idle 에도 매 프레임 getBoundingClientRect(강제 reflow)를 태우고, 리사이즈 중엔 매 프레임
-  // 네이티브 재배치를 유발해 CPU 가 폭발한다. 그래서 "움직일 때만" 도는 자가종료 추종 루프로
-  // 바꾼다:
-  //   - rect 가 STABLE_STOP_FRAMES 연속 무변화면 루프를 멈춘다(idle 폴링 0).
-  //   - 실제 트리거에서만 다시 깨운다: 슬롯 리사이즈(분할/사이드바)·창 리사이즈·라이브
-  //     드래그(코어 신호)·포인터 드래그(분할 divider·사이드바 리사이저 = 슬롯 "이동"인데
-  //     크기는 안 바뀔 수 있어 ResizeObserver 가 못 잡는 경우).
-  //   - 드래그(liveRef) 중엔 syncBounds 가 네이티브 재배치를 ~30Hz 로 스로틀, 끝에 1회 정확 스냅.
-  useEffect(() => {
-    const el = areaRef.current;
-    if (!el) return;
-    let rafId = 0;
-    let stable = 0;
-    const tick = () => {
-      rafId = 0;
-      const s = syncBounds();
-      stable = s === "same" ? stable + 1 : 0;
-      // 드래그(창 리사이즈·디바이더) 중이거나 아직 안정 전이면 계속 추종, 아니면 멈춘다(idle 0).
-      if (
-        followShouldContinue({
-          live: liveRef.current,
-          gesture: gestureRef.current,
-          veiled: veiledRef.current,
-          stableFrames: stable,
-          stopAfter: STABLE_STOP_FRAMES,
-        })
-      ) {
-        rafId = requestAnimationFrame(tick);
-      }
-    };
-    const arm = () => {
-      stable = 0;
-      if (!rafId) rafId = requestAnimationFrame(tick);
-    };
-
-    const ro = new ResizeObserver(arm);
-    ro.observe(el);
-    const onWinResize = () => arm();
-    window.addEventListener("resize", onWinResize);
-    // 포인터 드래그(분할 divider·사이드바 리사이저)는 슬롯을 이동시키지만 크기는 안 바꿀 수
-    // 있다(ResizeObserver 미발화) → 드래그 동안만 추종을 깨운다. 버튼 눌림(e.buttons)일 때만.
-    const onPointerDown = () => arm();
-    const onPointerMove = (e: PointerEvent) => {
-      if (e.buttons) arm();
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("pointermove", onPointerMove, true);
-
-    // 라이브 리사이즈 게이트(코어 네이티브 신호 — app.focus 와 동형 채널). 시작=추종 깨움
-    // (스로틀 적용), 끝=정확한 최종 rect 로 1회 강제 스냅 후 잔여 레이아웃 정착 보정.
-    const offLive = app.events.on("window.live-resize", (p) => {
-      const active = !!(p as { active?: boolean }).active;
-      liveRef.current = active;
-      if (!active) syncBounds(true);
-      arm();
-    });
-
-    // 디바이더 드래그 — layout.resize-gesture(창-로컬). 드래그 내내 추종 루프를 살려 매 프레임
-    // 앵커 rect 로 bounds 를 커밋한다: DOM 분할은 이미 매 프레임 라이브 커밋이므로 네이티브가
-    // 같은 리듬으로 따라와야 실시간 리사이즈다(최대 1프레임 지연). 변화 없는 프레임은 same-rect
-    // 스킵이라 IPC 0. 끝: 최종 레이아웃 커밋 후 도착하므로 정확한 최종 rect 로 1회 강제 스냅.
-    // (freeze-frame 정지 사진은 폐기 — 드래그 중 콘텐츠가 박제되고, 옛 크기 스탠드인이 빈 슬롯을
-    //  드러내는 잔상의 근원이었다.)
-    const offGesture = app.events.on("layout.resize-gesture", (p) => {
-      const q = p as { active?: boolean; kinds?: string[] };
-      // 이 표면이 위상의 대상인지 브로드캐스트로 추측하지 않는다 — 코어가 동결한 슬롯에만
-      // view.veiled 로 정확히 통지한다(아래). 여기서는 드래그(resize) 라이브 추종만 다룬다.
-      const active = !!q.active;
-      gestureRef.current = active;
-      if (!active && !veiledRef.current) {
-        // 착지 주인은 하나다 — 스탠드인 뒤에 있는 표면의 착지는 해동 에지(view.veiled false)가
-        // 쓴다. 여기서도 강제로 쓰면 force 가 same-rect 를 관통하므로 위상마다 중복 IPC 와
-        // 중복 setFrame 이 나간다(실측: 착지 1 이어야 할 자리에 2).
-        syncBounds(true);
-        verifyAlive(); // 위상 끝 = 복귀 에지 — 생존 검증(멱등)
-      }
-      arm();
-    });
-    // 코어 슬롯 동결(§4.6) 릴레이. veil 은 셋을 뜻한다: **감춰라**, 따라가지 마라, 해동 에지에
-    // 정확히 한 번 착지하라. 감춤이 필요한 이유는 활강 중 표면이 제자리에 머무는데 슬롯은
-    // 미끄러져, DOM 이 그 옛 자리를 전부 덮어 준다는 보장이 없기 때문이다(녹화 판독: 활강 중
-    // 페이지가 둘로 보였다 — 미끄러지는 스탠드인 + 레일 안쪽에 드러난 표면 띠).
-    // 깜빡이지 않는 조건은 순서다: 코어가 스탠드인 페인트 커밋 뒤에 이 신호를 보낸다(§5-2).
-    const offVeil = app.events.on("view.veiled", (p) => {
-      const q = p as { viewId?: string; veiled?: boolean; hidden?: boolean };
-      if (q.viewId !== ctx.viewId || !label || !webview) return;
-      veiledRef.current = !!q.veiled;
-      if (ctx.viewId) noteSurfaceVeil(ctx.viewId, veiledRef.current);
-      if (q.veiled) {
-        // 두 에지가 따로 온다: veiled 는 즉시(추종 정지 — 늦으면 추종 루프가 최종 좌표로 한 번
-        // 써서 표면이 t0 에 텔레포트한다), hidden 은 스탠드인 페인트 커밋 뒤(§5-2).
-        if (q.hidden) void webview.visible(label, false, false).catch(() => {});
-        return;
-      }
-      // 착지 = 유일한 쓰기 시점. 좌표를 먼저 확정하고 그 다음 드러낸다 — 순서가 반대면 옛
-      // 자리의 한 프레임이 보인다. 복귀는 표현 전용(focus:false — 포커스 불탈취).
-      lastRectRef.current = "";
-      syncBounds(true);
-      void webview.visible(label, true, false).catch(() => {});
-      verifyAlive();
-      arm();
-    });
-
-    arm(); // 초기 정착 1회.
-
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", onWinResize);
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("pointermove", onPointerMove, true);
-      offLive.dispose();
-      offGesture.dispose();
-      if (rafId) cancelAnimationFrame(rafId);
-      offVeil.dispose();
-    };
-  }, [syncBounds, app, webview]);
-
-  useEffect(() => {
-    if (!webview || !label) return;
-    // 콘텐츠 탭 전환 = 슬롯 파킹/언파킹(위치 이동, 크기 무변 → ResizeObserver 미발화). 코어가 그
-    // 렌더 커밋 직후(useLayoutEffect) layout.reflow 를 발화하므로, 여기서 최종 앵커 rect 로 bounds 를
-    // 1회 재스냅한다 — 활성 뷰=온스크린, 비활성 뷰=오프스크린(파킹). 폴링/추종 아님: 커밋 후 신호에
-    // 대한 단일 반응이라 클릭에 즉시 따라온다.
-    const off = app.events.on("layout.reflow", () => {
-      // 위상 중엔 재스냅 금지 — 스탠드인 뒤의 표면은 해동 에지에 정확히 한 번만 착지한다(§4.6).
-      // reflow 는 페인트 전에 오므로 여기서 읽는 rect 는 위상 최종 좌표이고, 그걸로 지금 쓰면
-      // child 가 t0 에 목적지로 텔레포트한다.
-      if (veiledRef.current || gestureRef.current) return;
-      // 캐시는 "마지막으로 보낸 값"이고 이 표면의 bounds 를 쓰는 주체는 이 플러그인 하나뿐이라
-      // stale 이 될 수 없다 — 비강제 하나로 충분하다: 기하가 같으면 IPC 0, 달라졌으면 즉시 1회.
-      syncBounds();
-    });
-    // 코어 view.parked(시트 && 탭 유효 가시성) — 표시/숨김은 코어가 직접 수행하고, 여기서는 복귀
-    // 직후 앵커 rect 로 재스냅만 한다. reflow 와 달리 뷰 단위 정확 신호라 파킹 rect 를 읽는 경쟁이 없다.
-    const offPark = app.events.on("view.parked", (p) => {
-      const q = p as { viewId?: string; parked?: boolean };
-      if (q.viewId !== ctx.viewId || q.parked) return;
-      lastRectRef.current = "";
-      verifyAlive();
-      requestAnimationFrame(() => syncBounds(true));
-    });
-    return () => {
-      off.dispose();
-      offPark.dispose();
-    };
-  }, [webview, label, app, syncBounds, ctx.viewId]);
+  }, [label]);
 
   // webview nav 이벤트 → localUrl 동기화 + ctx.setTitle
   useEffect(() => {

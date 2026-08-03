@@ -746,7 +746,7 @@ var require_react_production = __commonJS({
     exports.useTransition = function() {
       return ReactSharedInternals.H.useTransition();
     };
-    exports.version = "19.2.7";
+    exports.version = "19.2.8";
   }
 });
 
@@ -907,7 +907,7 @@ var require_react_dom_production = __commonJS({
     exports.useFormStatus = function() {
       return ReactSharedInternals.H.useHostTransitionStatus();
     };
-    exports.version = "19.2.7";
+    exports.version = "19.2.8";
   }
 });
 
@@ -12584,12 +12584,12 @@ var require_react_dom_client_production = __commonJS({
       }
     };
     var isomorphicReactPackageVersion$jscomp$inline_1840 = React.version;
-    if ("19.2.7" !== isomorphicReactPackageVersion$jscomp$inline_1840)
+    if ("19.2.8" !== isomorphicReactPackageVersion$jscomp$inline_1840)
       throw Error(
         formatProdErrorMessage(
           527,
           isomorphicReactPackageVersion$jscomp$inline_1840,
-          "19.2.7"
+          "19.2.8"
         )
       );
     ReactDOMSharedInternals.findDOMNode = function(componentOrElement) {
@@ -12607,10 +12607,10 @@ var require_react_dom_client_production = __commonJS({
     };
     var internals$jscomp$inline_2347 = {
       bundleType: 0,
-      version: "19.2.7",
+      version: "19.2.8",
       rendererPackageName: "react-dom",
       currentDispatcherRef: ReactSharedInternals,
-      reconcilerVersion: "19.2.7"
+      reconcilerVersion: "19.2.8"
     };
     if ("undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__) {
       hook$jscomp$inline_2348 = __REACT_DEVTOOLS_GLOBAL_HOOK__;
@@ -12678,7 +12678,7 @@ var require_react_dom_client_production = __commonJS({
       listenToAllSupportedEvents(container);
       return new ReactDOMHydrationRoot(initialChildren);
     };
-    exports.version = "19.2.7";
+    exports.version = "19.2.8";
   }
 });
 
@@ -12924,41 +12924,9 @@ function domWaitForBody(selector, timeoutMs = 5e3) {
           });`;
 }
 
-// ../../kits/soksak-kit-browser-common/src/motion-freeze.ts
-function leadPosition(i) {
-  if (!i.moving || !i.prev) return i.cur;
-  const dx = i.cur.x - i.prev.x;
-  const dy = i.cur.y - i.prev.y;
-  if (dx === 0 && dy === 0) return i.cur;
-  if (Math.abs(dx) > i.teleportPx || Math.abs(dy) > i.teleportPx) return i.cur;
-  return { x: i.cur.x + dx, y: i.cur.y + dy };
-}
-
-// src/bounds-follow.ts
-function followShouldContinue(i) {
-  if (i.veiled) return false;
-  return i.live || i.gesture || i.stableFrames < i.stopAfter;
-}
-function boundsCommitDecision(i) {
-  if (i.force) return "send";
-  if (i.shrinking && !i.sameRect) return "send";
-  if (i.veiled) return "skip";
-  if (i.sameRect) return "skip";
-  if (i.live && i.msSinceLast < i.throttleMs) return "pending";
-  return "send";
-}
-
 // src/view-status.ts
 function loadStatus(loading) {
   return loading ? { code: "busy", messageKey: "statusLoading" } : { code: "ready", messageKey: "statusReady" };
-}
-
-// src/view-visibility.ts
-function visibleFromComputedStyle(style) {
-  return style.visibility !== "hidden" && style.display !== "none";
-}
-function visibleFromAnchor(anchor) {
-  return visibleFromComputedStyle(getComputedStyle(anchor));
 }
 
 // src/i18n.ts
@@ -13010,21 +12978,6 @@ function takePendingUrl() {
 var activeViews = /* @__PURE__ */ new Map();
 var lastMountedViewId = null;
 var activeViewId = null;
-var surfaceStats = /* @__PURE__ */ new Map();
-function statOf(viewId) {
-  let e = surfaceStats.get(viewId);
-  if (!e) {
-    e = { sends: 0, veiled: false };
-    surfaceStats.set(viewId, e);
-  }
-  return e;
-}
-function noteSurfaceWrite(viewId) {
-  statOf(viewId).sends += 1;
-}
-function noteSurfaceVeil(viewId, veiled) {
-  statOf(viewId).veiled = veiled;
-}
 function registerLabel(viewId, label, getUrl) {
   activeViews.set(viewId, { viewId, label, getUrl });
   lastMountedViewId = viewId;
@@ -13038,7 +12991,6 @@ function registerViewAtMount(viewId, label, initialUrl) {
 function unregisterLabel(viewId) {
   activeViews.delete(viewId);
   liveUrls.delete(viewId);
-  surfaceStats.delete(viewId);
   if (activeViewId === viewId) activeViewId = null;
   if (lastMountedViewId === viewId) lastMountedViewId = null;
 }
@@ -13094,21 +13046,6 @@ function registerCommands(ctx) {
       returns: "{ ok, version }",
       message: (d) => `\uBE0C\uB77C\uC6B0\uC800 \uD50C\uB7EC\uADF8\uC778 v${d.version} \uC774 \uC801\uC7AC\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.`,
       handler: () => ({ ok: true, version: "2.0.0" })
-    })
-  );
-  sub(
-    app.commands.register("surface.stats", {
-      description: "Native bounds-write counters per browser view (E2E observation). sends is the running total of bounds commits; veiled is whether the core's stand-in currently covers the surface. During a move phase sends must not advance, and the landing must advance it by exactly one.",
-      triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uD45C\uBA74 \uC1A1\uC2E0 \uACC4\uC218 \uC704\uC0C1 \uC4F0\uAE30 \uD655\uC778" },
-      returns: "{ views: [{ viewId, sends, veiled }] }",
-      message: (d) => `\uD45C\uBA74 ${(d.views ?? []).length}\uAC1C`,
-      handler: () => ({
-        views: [...surfaceStats.entries()].map(([viewId, v]) => ({
-          viewId,
-          sends: v.sends,
-          veiled: v.veiled
-        }))
-      })
     })
   );
   sub(
@@ -13595,8 +13532,6 @@ function evalErr(e) {
 
 // src/browser-view.tsx
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
-var LIVE_THROTTLE_MS = 32;
-var STABLE_STOP_FRAMES = 4;
 function normalizeUrl2(input) {
   const s = input.trim();
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(s)) return s;
@@ -13627,15 +13562,6 @@ function BrowserViewImpl({
   const webview = app.webview;
   const label = ctx.viewId && webview ? webview.label(ctx.viewId) : null;
   const areaRef = (0, import_react.useRef)(null);
-  const openedRef = (0, import_react.useRef)(false);
-  const lastRectRef = (0, import_react.useRef)("");
-  const [openEpoch, setOpenEpoch] = (0, import_react.useState)(0);
-  const prevSampleRef = (0, import_react.useRef)(null);
-  const veiledRef = (0, import_react.useRef)(false);
-  const liveRef = (0, import_react.useRef)(false);
-  const gestureRef = (0, import_react.useRef)(false);
-  const lastSentRef = (0, import_react.useRef)(0);
-  const lastVisibleRef = (0, import_react.useRef)(true);
   const [localUrl, setLocalUrl] = (0, import_react.useState)(initialUrl);
   const localUrlRef = (0, import_react.useRef)(initialUrl);
   const [bmOpen, setBmOpen] = (0, import_react.useState)(false);
@@ -13705,45 +13631,6 @@ function BrowserViewImpl({
   (0, import_react.useEffect)(() => {
     localUrlRef.current = localUrl;
   }, [localUrl]);
-  const syncBounds = (0, import_react.useCallback)(
-    (force = false) => {
-      const el = areaRef.current;
-      if (!el || !openedRef.current || !webview || !label) return "same";
-      const r = el.getBoundingClientRect();
-      const x = Math.ceil(r.left);
-      const y = Math.ceil(r.top);
-      const w = Math.max(1, Math.floor(r.right) - x);
-      const h = Math.max(1, Math.floor(r.bottom) - y);
-      const led = force ? { x, y } : leadPosition({
-        prev: prevSampleRef.current,
-        cur: { x, y },
-        moving: gestureRef.current,
-        teleportPx: 200
-      });
-      prevSampleRef.current = { x, y };
-      const key = `${led.x},${led.y},${w},${h}`;
-      const [, , lw, lh] = (lastRectRef.current || "0,0,0,0").split(",").map(Number);
-      const shrinking = lastRectRef.current !== "" && (w < lw || h < lh);
-      const decision = boundsCommitDecision({
-        force,
-        live: liveRef.current,
-        gesture: gestureRef.current,
-        veiled: veiledRef.current,
-        shrinking,
-        sameRect: key === lastRectRef.current,
-        msSinceLast: performance.now() - lastSentRef.current,
-        throttleMs: LIVE_THROTTLE_MS
-      });
-      if (decision === "skip") return "same";
-      if (decision === "pending") return "pending";
-      lastRectRef.current = key;
-      lastSentRef.current = performance.now();
-      if (ctx.viewId) noteSurfaceWrite(ctx.viewId);
-      void webview.bounds(label, led.x, led.y, w, h);
-      return "sent";
-    },
-    [webview, label]
-  );
   (0, import_react.useEffect)(() => {
     const stamp = (v) => {
       const el0 = areaRef.current;
@@ -13759,16 +13646,8 @@ function BrowserViewImpl({
       return;
     }
     let closed = false;
-    const r = el.getBoundingClientRect();
-    lastVisibleRef.current = visibleFromAnchor(el);
     stamp("invoking");
-    webview.open(label, {
-      url: localUrl,
-      x: r.left,
-      y: r.top,
-      w: Math.max(1, r.width),
-      h: Math.max(1, r.height)
-    }).then(() => {
+    webview.open(label, { url: localUrl }).then(() => {
       if (closed) {
         stamp("closed-during-open");
         void webview.close(label).catch(() => {
@@ -13776,10 +13655,6 @@ function BrowserViewImpl({
         return;
       }
       stamp("opened");
-      openedRef.current = true;
-      void webview.visible(label, lastVisibleRef.current).catch(() => {
-      });
-      syncBounds();
     }).catch((e) => {
       stamp(`error:${String(e).slice(0, 80)}`);
       console.error("browser_open:", e);
@@ -13787,119 +13662,11 @@ function BrowserViewImpl({
     registerLabel(ctx.viewId, label, () => localUrlRef.current);
     return () => {
       closed = true;
-      openedRef.current = false;
       unregisterLabel(ctx.viewId);
       void webview.close(label).catch(() => {
       });
     };
-  }, [label, openEpoch]);
-  const verifyAlive = (0, import_react.useCallback)(() => {
-    if (!label || !webview) return;
-    const probe = webview.alive ? webview.alive(label) : webview.list("b-").then((labels) => labels.includes(label));
-    void probe.then((ok) => {
-      if (!ok) {
-        openedRef.current = false;
-        setOpenEpoch((e) => e + 1);
-      }
-    }).catch(() => {
-    });
-  }, [label, webview]);
-  (0, import_react.useEffect)(() => {
-    const el = areaRef.current;
-    if (!el) return;
-    let rafId = 0;
-    let stable = 0;
-    const tick = () => {
-      rafId = 0;
-      const s = syncBounds();
-      stable = s === "same" ? stable + 1 : 0;
-      if (followShouldContinue({
-        live: liveRef.current,
-        gesture: gestureRef.current,
-        veiled: veiledRef.current,
-        stableFrames: stable,
-        stopAfter: STABLE_STOP_FRAMES
-      })) {
-        rafId = requestAnimationFrame(tick);
-      }
-    };
-    const arm = () => {
-      stable = 0;
-      if (!rafId) rafId = requestAnimationFrame(tick);
-    };
-    const ro = new ResizeObserver(arm);
-    ro.observe(el);
-    const onWinResize = () => arm();
-    window.addEventListener("resize", onWinResize);
-    const onPointerDown = () => arm();
-    const onPointerMove = (e) => {
-      if (e.buttons) arm();
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("pointermove", onPointerMove, true);
-    const offLive = app.events.on("window.live-resize", (p) => {
-      const active = !!p.active;
-      liveRef.current = active;
-      if (!active) syncBounds(true);
-      arm();
-    });
-    const offGesture = app.events.on("layout.resize-gesture", (p) => {
-      const q = p;
-      const active = !!q.active;
-      gestureRef.current = active;
-      if (!active && !veiledRef.current) {
-        syncBounds(true);
-        verifyAlive();
-      }
-      arm();
-    });
-    const offVeil = app.events.on("view.veiled", (p) => {
-      const q = p;
-      if (q.viewId !== ctx.viewId || !label || !webview) return;
-      veiledRef.current = !!q.veiled;
-      if (ctx.viewId) noteSurfaceVeil(ctx.viewId, veiledRef.current);
-      if (q.veiled) {
-        if (q.hidden) void webview.visible(label, false, false).catch(() => {
-        });
-        return;
-      }
-      lastRectRef.current = "";
-      syncBounds(true);
-      void webview.visible(label, true, false).catch(() => {
-      });
-      verifyAlive();
-      arm();
-    });
-    arm();
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", onWinResize);
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("pointermove", onPointerMove, true);
-      offLive.dispose();
-      offGesture.dispose();
-      if (rafId) cancelAnimationFrame(rafId);
-      offVeil.dispose();
-    };
-  }, [syncBounds, app, webview]);
-  (0, import_react.useEffect)(() => {
-    if (!webview || !label) return;
-    const off = app.events.on("layout.reflow", () => {
-      if (veiledRef.current || gestureRef.current) return;
-      syncBounds();
-    });
-    const offPark = app.events.on("view.parked", (p) => {
-      const q = p;
-      if (q.viewId !== ctx.viewId || q.parked) return;
-      lastRectRef.current = "";
-      verifyAlive();
-      requestAnimationFrame(() => syncBounds(true));
-    });
-    return () => {
-      off.dispose();
-      offPark.dispose();
-    };
-  }, [webview, label, app, syncBounds, ctx.viewId]);
+  }, [label]);
   (0, import_react.useEffect)(() => {
     if (!label || !webview) return;
     const d1 = webview.on(label, "nav", (p) => {

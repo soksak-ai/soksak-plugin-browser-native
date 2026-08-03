@@ -140,13 +140,6 @@
         }
       },
       {
-        "name": "surface.stats",
-        "title": {
-          "ko": "표면 송신 계수(E2E)",
-          "en": "Surface write counters (E2E)"
-        }
-      },
-      {
         "name": "navigate",
         "title": {
           "ko": "URL 이동",

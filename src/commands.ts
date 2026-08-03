@@ -31,24 +31,6 @@ let lastMountedViewId: string | null = null;
 // "마지막으로 본 브라우저"를 친다). 그 뷰가 닫히면 unregisterLabel 이 비운다.
 let activeViewId: string | null = null;
 
-// 표면 쓰기 관측면 — "위상 중 이 표면에 아무도 쓰지 않는다"(§4.6)는 계약은 결과(착지 일치)만으로
-// 증명되지 않는다. 누계와 veil 상태를 노출해 하니스가 위상 전후로 직접 센다.
-const surfaceStats = new Map<string, { sends: number; veiled: boolean }>();
-function statOf(viewId: string): { sends: number; veiled: boolean } {
-  let e = surfaceStats.get(viewId);
-  if (!e) {
-    e = { sends: 0, veiled: false };
-    surfaceStats.set(viewId, e);
-  }
-  return e;
-}
-export function noteSurfaceWrite(viewId: string): void {
-  statOf(viewId).sends += 1;
-}
-export function noteSurfaceVeil(viewId: string, veiled: boolean): void {
-  statOf(viewId).veiled = veiled;
-}
-
 export function registerLabel(viewId: string, label: string, getUrl: () => string): void {
   activeViews.set(viewId, { viewId, label, getUrl });
   lastMountedViewId = viewId;
@@ -76,7 +58,6 @@ export function registerViewAtMount(viewId: string, label: string, initialUrl: s
 export function unregisterLabel(viewId: string): void {
   activeViews.delete(viewId);
   liveUrls.delete(viewId);
-  surfaceStats.delete(viewId);
   if (activeViewId === viewId) activeViewId = null;
   if (lastMountedViewId === viewId) lastMountedViewId = null;
 }
@@ -158,23 +139,6 @@ export function registerCommands(ctx: PluginContext): void {
       returns: "{ ok, version }",
       message: (d) => `브라우저 플러그인 v${d.version} 이 적재되어 있습니다.`,
       handler: () => ({ ok: true, version: "2.0.0" }),
-    }),
-  );
-
-  sub(
-    app.commands.register("surface.stats", {
-      description:
-        "Native bounds-write counters per browser view (E2E observation). sends is the running total of bounds commits; veiled is whether the core's stand-in currently covers the surface. During a move phase sends must not advance, and the landing must advance it by exactly one.",
-      triggers: { ko: "브라우저 표면 송신 계수 위상 쓰기 확인" },
-      returns: "{ views: [{ viewId, sends, veiled }] }",
-      message: (d) => `표면 ${((d.views as unknown[]) ?? []).length}개`,
-      handler: () => ({
-        views: [...surfaceStats.entries()].map(([viewId, v]) => ({
-          viewId,
-          sends: v.sends,
-          veiled: v.veiled,
-        })),
-      }),
     }),
   );
 
