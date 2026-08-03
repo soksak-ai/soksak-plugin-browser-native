@@ -64,6 +64,11 @@ export interface CommandOutcome {
 
 // app.webview — 호스트가 제공하는 임베디드 content-view 구동.
 export interface WebviewApi {
+  /** 선택 기능은 adapter 이름이 아니라 이 공개 축으로 판단한다. */
+  capabilities: Readonly<{
+    supportsDocumentStart: boolean;
+    supportsInputInjection: boolean;
+  }>;
   /** viewId → 전역 유일 label(창 네임스페이스). webviewLabels 단일 진실. */
   label: (viewId: string) => string;
   /** content-view 생성. 공개 슬롯이 있으면 호스트가 배치를 소유한다.
@@ -90,6 +95,8 @@ export interface WebviewApi {
     code: string,
     phase?: "document-start" | "document-end",
   ) => Disposable;
+  /** 실제 엔진 입력 경로. supportsInputInjection=false면 호스트가 명시적으로 거절한다. */
+  sendInput: (label: string, x: number, y: number) => Promise<void>;
   /** webview 이벤트 구독: "nav"({url})·"title"({title})·"status"·"open-external"({url})·
    *  "loading"({loading,canBack,canForward} — 스피너/정지 토글·뒤로/앞으로 활성). 반환=해지. */
   on: (
