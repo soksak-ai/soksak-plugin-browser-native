@@ -115,6 +115,56 @@ async function evalJson(
   }
 }
 
+/**
+ * 선택자 대기는 현재 document의 MutationObserver와 네이티브 navigation 사건을 함께 소유한다.
+ *
+ * navigate 직후 시작한 JS 평가는 옛 document에 붙을 수 있고, 그 document가 교체되면 Promise
+ * 자체가 회신 없이 사라진다. 그 불안정한 평가를 기준으로 삼지 않는다. `loading:false`가 올 때마다
+ * 새 document에 같은 observer를 다시 설치하며, 전체 수명은 호스트 타이머 하나가 유한하게 닫는다.
+ */
+export function waitForSelector(
+  webview: WebviewApi,
+  label: string,
+  selector: string,
+  timeoutMs: number,
+): Promise<{ found: boolean }> {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    let settled = false;
+    let loadingSubscription: { dispose(): void } | null = null;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const finish = (found: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      loadingSubscription?.dispose();
+      resolve({ found });
+    };
+    const observeCurrentDocument = async () => {
+      if (settled) return;
+      const remaining = Math.max(1, timeoutMs - (Date.now() - startedAt));
+      try {
+        const value = (await evalJson(
+          webview,
+          label,
+          domWaitForBody(selector, remaining),
+        )) as { found?: unknown };
+        if (value?.found === true) finish(true);
+      } catch {
+        // navigation으로 사라진 document의 평가는 실패하거나 영원히 미회신일 수 있다.
+        // 다음 loading:false 사건이 새 document 관측을 시작하고, 전체 타이머가 수명을 닫는다.
+      }
+    };
+
+    timer = setTimeout(() => finish(false), timeoutMs);
+    loadingSubscription = webview.on(label, "loading", (payload) => {
+      if (payload.loading === false) void observeCurrentDocument();
+    });
+    void observeCurrentDocument();
+  });
+}
+
 // 비-macOS(eval 미지원)에서 graceful 에러 — 호출측이 ok:false 로 표면화.
 const NON_MACOS_EVAL_ERR = "eval is macOS-only (WKWebView callAsyncJavaScript)";
 
@@ -540,9 +590,8 @@ export function registerCommands(ctx: PluginContext): void {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 5000;
-        const js = domWaitForBody(String(p.selector), timeoutMs);
         try {
-          const r = (await evalJson(app.webview, entry.label, js)) as object;
+          const r = await waitForSelector(app.webview, entry.label, String(p.selector), timeoutMs);
           return { ok: true, ...r, viewId: entry.viewId };
         } catch (e) {
           return { ok: false, code: "INTERNAL", message: evalErr(e) };

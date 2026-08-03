@@ -13028,6 +13028,39 @@ async function evalJson(webview, label, body) {
     return raw;
   }
 }
+function waitForSelector(webview, label, selector, timeoutMs) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    let settled = false;
+    let loadingSubscription = null;
+    let timer;
+    const finish = (found) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      loadingSubscription?.dispose();
+      resolve({ found });
+    };
+    const observeCurrentDocument = async () => {
+      if (settled) return;
+      const remaining = Math.max(1, timeoutMs - (Date.now() - startedAt));
+      try {
+        const value = await evalJson(
+          webview,
+          label,
+          domWaitForBody(selector, remaining)
+        );
+        if (value?.found === true) finish(true);
+      } catch {
+      }
+    };
+    timer = setTimeout(() => finish(false), timeoutMs);
+    loadingSubscription = webview.on(label, "loading", (payload) => {
+      if (payload.loading === false) void observeCurrentDocument();
+    });
+    void observeCurrentDocument();
+  });
+}
 var NON_MACOS_EVAL_ERR = "eval is macOS-only (WKWebView callAsyncJavaScript)";
 function registerCommands(ctx) {
   const app = ctx.app;
@@ -13397,9 +13430,8 @@ function registerCommands(ctx) {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
         const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 5e3;
-        const js = domWaitForBody(String(p.selector), timeoutMs);
         try {
-          const r = await evalJson(app.webview, entry.label, js);
+          const r = await waitForSelector(app.webview, entry.label, String(p.selector), timeoutMs);
           return { ok: true, ...r, viewId: entry.viewId };
         } catch (e) {
           return { ok: false, code: "INTERNAL", message: evalErr(e) };
