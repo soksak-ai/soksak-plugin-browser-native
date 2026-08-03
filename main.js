@@ -13061,6 +13061,31 @@ function waitForSelector(webview, label, selector, timeoutMs) {
     void observeCurrentDocument();
   });
 }
+async function navigateAndWaitForLoad(webview, label, url, timeoutMs) {
+  let finish;
+  const loaded = new Promise((resolve) => {
+    let settled = false;
+    let subscription = null;
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      subscription?.dispose();
+      resolve({ loaded: value });
+    };
+    subscription = webview.on(label, "loading", (payload) => {
+      if (payload.loading === false) finish(true);
+    });
+  });
+  try {
+    await webview.navigate(label, url);
+  } catch (error) {
+    finish(false);
+    throw error;
+  }
+  return loaded;
+}
 var NON_MACOS_EVAL_ERR = "eval is macOS-only (WKWebView callAsyncJavaScript)";
 function registerCommands(ctx) {
   const app = ctx.app;
@@ -13087,6 +13112,7 @@ function registerCommands(ctx) {
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC774\uB3D9 URL \uC5F4\uAE30" },
       params: {
         url: { type: "string", description: "URL to navigate to", required: true },
+        timeoutMs: { type: "number", description: "Finite page-load deadline in milliseconds", required: false },
         ...targetParam
       },
       returns: "{ ok, viewId? }",
@@ -13098,7 +13124,19 @@ function registerCommands(ctx) {
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
-        await app.webview.navigate(entry.label, String(p.url ?? ""));
+        const timeoutMs = typeof p.timeoutMs === "number" ? p.timeoutMs : 8e3;
+        if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 6e4) {
+          return { ok: false, code: "INVALID_PARAMS", message: "timeoutMs must be 1..60000" };
+        }
+        const outcome = await navigateAndWaitForLoad(
+          app.webview,
+          entry.label,
+          String(p.url ?? ""),
+          timeoutMs
+        );
+        if (!outcome.loaded) {
+          return { ok: false, code: "TIMEOUT", message: `page load timed out after ${timeoutMs}ms` };
+        }
         return { ok: true, viewId: entry.viewId };
       }
     })
