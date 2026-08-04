@@ -3,7 +3,7 @@
 //   - 코어 evalInBrowser 래퍼(async IIFE + JSON.stringify)를 evalJson 으로 재현(app.webview.eval
 //     은 raw 패스스루라 호출측이 직접 감싸야 한다 — browser_eval 은 문자열 반환을 요구).
 //   - dom.* JS 스니펫·param 이름·반환 형태를 코어와 동일하게 유지(AI/E2E 행동 무변).
-import { normalizeUrl , domTextBody, domHtmlBody, domQueryBody, domClickBody, domFillBody, domSubmitBody, domWaitForBody, focusEditableBody } from "soksak-kit-browser-common";
+import { normalizeUrl , domTextBody, domHtmlBody, domQueryBody, domClickBody, domFillBody, domSubmitBody, focusEditableBody, waitForSelectorAcrossNavigations } from "soksak-kit-browser-common";
 import type { PluginContext, WebviewApi } from "./host";
 
 // 새 브라우저 탭을 열 때 mount 가 homeUrl 대신 소비할 "대기 URL".
@@ -128,40 +128,11 @@ export function waitForSelector(
   selector: string,
   timeoutMs: number,
 ): Promise<{ found: boolean }> {
-  return new Promise((resolve) => {
-    const startedAt = Date.now();
-    let settled = false;
-    let loadingSubscription: { dispose(): void } | null = null;
-    let timer: ReturnType<typeof setTimeout>;
-
-    const finish = (found: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      loadingSubscription?.dispose();
-      resolve({ found });
-    };
-    const observeCurrentDocument = async () => {
-      if (settled) return;
-      const remaining = Math.max(1, timeoutMs - (Date.now() - startedAt));
-      try {
-        const value = (await evalJson(
-          webview,
-          label,
-          domWaitForBody(selector, remaining),
-        )) as { found?: unknown };
-        if (value?.found === true) finish(true);
-      } catch {
-        // navigation으로 사라진 document의 평가는 실패하거나 영원히 미회신일 수 있다.
-        // 다음 loading:false 사건이 새 document 관측을 시작하고, 전체 타이머가 수명을 닫는다.
-      }
-    };
-
-    timer = setTimeout(() => finish(false), timeoutMs);
-    loadingSubscription = webview.on(label, "loading", (payload) => {
-      if (payload.loading === false) void observeCurrentDocument();
-    });
-    void observeCurrentDocument();
+  return waitForSelectorAcrossNavigations({
+    selector,
+    timeoutMs,
+    evaluate: (body) => evalJson(webview, label, body),
+    subscribeLoading: (listener) => webview.on(label, "loading", (payload) => listener(!!payload.loading)),
   });
 }
 

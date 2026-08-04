@@ -12779,6 +12779,103 @@ function renderNavState(s) {
   };
 }
 
+// ../../kits/soksak-kit-browser-common/src/dom-snippets.ts
+var jsStr = (s) => JSON.stringify(s);
+function domTextBody(selector, maxLength = 2e4) {
+  return selector ? `const el = document.querySelector(${jsStr(selector)}); return el ? el.innerText.slice(0, ${maxLength}) : null;` : `return document.body.innerText.slice(0, ${maxLength});`;
+}
+function domHtmlBody(selector, maxLength = 2e4) {
+  return selector ? `const el = document.querySelector(${jsStr(selector)}); return el ? el.outerHTML.slice(0, ${maxLength}) : null;` : `return document.documentElement.outerHTML.slice(0, ${maxLength});`;
+}
+function domQueryBody(selector, limit = 20) {
+  return `
+          const all = [...document.querySelectorAll(${jsStr(selector)})];
+          return { count: all.length, elements: all.slice(0, ${limit}).map(e => ({
+            tag: e.tagName.toLowerCase(),
+            text: (e.innerText || "").trim().slice(0, 120) || undefined,
+            id: e.id || undefined,
+            class: (typeof e.className === "string" && e.className) || undefined,
+            name: e.getAttribute("name") || undefined,
+            href: e.getAttribute("href") || undefined,
+            type: e.getAttribute("type") || undefined,
+            value: e.value !== undefined ? String(e.value).slice(0, 120) : undefined,
+          })) };`;
+}
+function domClickBody(selector) {
+  return `const el = document.querySelector(${jsStr(selector)}); if (!el) return { clicked: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" }; el.click(); return { clicked: true };`;
+}
+function focusEditableBody(selector) {
+  return `
+          const el = document.querySelector(${jsStr(selector)});
+          if (!el) return { focused: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
+          const editable = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable;
+          if (!editable) return { focused: false, reason: "\uD3B8\uC9D1 \uAC00\uB2A5\uD55C \uC694\uC18C\uAC00 \uC544\uB2D8" };
+          el.focus({ preventScroll: true });
+          const rect = el.getBoundingClientRect();
+          return { focused: document.activeElement === el, point: { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) } };`;
+}
+function domFillBody(selector, text) {
+  return `
+          const el = document.querySelector(${jsStr(selector)});
+          if (!el) return { filled: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
+          const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+          if (setter) setter.call(el, ${jsStr(text)}); else el.value = ${jsStr(text)};
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          return { filled: true };`;
+}
+function domSubmitBody(selector) {
+  return `
+          const el = document.querySelector(${jsStr(selector)});
+          if (!el) return { submitted: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
+          const form = el instanceof HTMLFormElement ? el : el.closest("form");
+          if (!form) return { submitted: false, reason: "form \uC5C6\uC74C" };
+          form.requestSubmit ? form.requestSubmit() : form.submit();
+          return { submitted: true };`;
+}
+function domWaitForBody(selector, timeoutMs = 5e3) {
+  return `
+          const find = () => document.querySelector(${jsStr(selector)});
+          if (find()) return { found: true };
+          return await new Promise((resolve) => {
+            const obs = new MutationObserver(() => {
+              if (find()) { obs.disconnect(); clearTimeout(timer); resolve({ found: true }); }
+            });
+            const timer = setTimeout(() => { obs.disconnect(); resolve({ found: false }); }, ${timeoutMs});
+            obs.observe(document, { childList: true, subtree: true });
+          });`;
+}
+
+// ../../kits/soksak-kit-browser-common/src/navigation-wait.ts
+function waitForSelectorAcrossNavigations(options) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    let settled = false;
+    let subscription = null;
+    const finish = (found) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      subscription?.dispose();
+      resolve({ found });
+    };
+    const observe = () => {
+      if (settled) return;
+      const remaining = Math.max(1, options.timeoutMs - (Date.now() - startedAt));
+      void options.evaluate(domWaitForBody(options.selector, remaining)).then((value) => {
+        if (value?.found === true) finish(true);
+      }).catch(() => {
+      });
+    };
+    const timer = setTimeout(() => finish(false), options.timeoutMs);
+    subscription = options.subscribeLoading((loading) => {
+      if (!loading) observe();
+    });
+    observe();
+  });
+}
+
 // ../../kits/soksak-kit-browser-common/src/toolbar.ts
 function btn(node, label, title) {
   const b = document.createElement("button");
@@ -12864,74 +12961,6 @@ function createBrowserToolbar(container, cb) {
       bar.remove();
     }
   };
-}
-
-// ../../kits/soksak-kit-browser-common/src/dom-snippets.ts
-var jsStr = (s) => JSON.stringify(s);
-function domTextBody(selector, maxLength = 2e4) {
-  return selector ? `const el = document.querySelector(${jsStr(selector)}); return el ? el.innerText.slice(0, ${maxLength}) : null;` : `return document.body.innerText.slice(0, ${maxLength});`;
-}
-function domHtmlBody(selector, maxLength = 2e4) {
-  return selector ? `const el = document.querySelector(${jsStr(selector)}); return el ? el.outerHTML.slice(0, ${maxLength}) : null;` : `return document.documentElement.outerHTML.slice(0, ${maxLength});`;
-}
-function domQueryBody(selector, limit = 20) {
-  return `
-          const all = [...document.querySelectorAll(${jsStr(selector)})];
-          return { count: all.length, elements: all.slice(0, ${limit}).map(e => ({
-            tag: e.tagName.toLowerCase(),
-            text: (e.innerText || "").trim().slice(0, 120) || undefined,
-            id: e.id || undefined,
-            class: (typeof e.className === "string" && e.className) || undefined,
-            name: e.getAttribute("name") || undefined,
-            href: e.getAttribute("href") || undefined,
-            type: e.getAttribute("type") || undefined,
-            value: e.value !== undefined ? String(e.value).slice(0, 120) : undefined,
-          })) };`;
-}
-function domClickBody(selector) {
-  return `const el = document.querySelector(${jsStr(selector)}); if (!el) return { clicked: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" }; el.click(); return { clicked: true };`;
-}
-function focusEditableBody(selector) {
-  return `
-          const el = document.querySelector(${jsStr(selector)});
-          if (!el) return { focused: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
-          const editable = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable;
-          if (!editable) return { focused: false, reason: "\uD3B8\uC9D1 \uAC00\uB2A5\uD55C \uC694\uC18C\uAC00 \uC544\uB2D8" };
-          el.focus({ preventScroll: true });
-          const rect = el.getBoundingClientRect();
-          return { focused: document.activeElement === el, point: { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) } };`;
-}
-function domFillBody(selector, text) {
-  return `
-          const el = document.querySelector(${jsStr(selector)});
-          if (!el) return { filled: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
-          const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-          const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-          if (setter) setter.call(el, ${jsStr(text)}); else el.value = ${jsStr(text)};
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          return { filled: true };`;
-}
-function domSubmitBody(selector) {
-  return `
-          const el = document.querySelector(${jsStr(selector)});
-          if (!el) return { submitted: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
-          const form = el instanceof HTMLFormElement ? el : el.closest("form");
-          if (!form) return { submitted: false, reason: "form \uC5C6\uC74C" };
-          form.requestSubmit ? form.requestSubmit() : form.submit();
-          return { submitted: true };`;
-}
-function domWaitForBody(selector, timeoutMs = 5e3) {
-  return `
-          const find = () => document.querySelector(${jsStr(selector)});
-          if (find()) return { found: true };
-          return await new Promise((resolve) => {
-            const obs = new MutationObserver(() => {
-              if (find()) { obs.disconnect(); clearTimeout(timer); resolve({ found: true }); }
-            });
-            const timer = setTimeout(() => { obs.disconnect(); resolve({ found: false }); }, ${timeoutMs});
-            obs.observe(document.documentElement, { childList: true, subtree: true });
-          });`;
 }
 
 // src/view-status.ts
@@ -13039,36 +13068,11 @@ async function evalJson(webview, label, body) {
   }
 }
 function waitForSelector(webview, label, selector, timeoutMs) {
-  return new Promise((resolve) => {
-    const startedAt = Date.now();
-    let settled = false;
-    let loadingSubscription = null;
-    let timer;
-    const finish = (found) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      loadingSubscription?.dispose();
-      resolve({ found });
-    };
-    const observeCurrentDocument = async () => {
-      if (settled) return;
-      const remaining = Math.max(1, timeoutMs - (Date.now() - startedAt));
-      try {
-        const value = await evalJson(
-          webview,
-          label,
-          domWaitForBody(selector, remaining)
-        );
-        if (value?.found === true) finish(true);
-      } catch {
-      }
-    };
-    timer = setTimeout(() => finish(false), timeoutMs);
-    loadingSubscription = webview.on(label, "loading", (payload) => {
-      if (payload.loading === false) void observeCurrentDocument();
-    });
-    void observeCurrentDocument();
+  return waitForSelectorAcrossNavigations({
+    selector,
+    timeoutMs,
+    evaluate: (body) => evalJson(webview, label, body),
+    subscribeLoading: (listener) => webview.on(label, "loading", (payload) => listener(!!payload.loading))
   });
 }
 var NON_MACOS_EVAL_ERR = "eval is macOS-only (WKWebView callAsyncJavaScript)";
