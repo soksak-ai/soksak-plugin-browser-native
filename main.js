@@ -12898,7 +12898,8 @@ function focusEditableBody(selector) {
           const editable = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable;
           if (!editable) return { focused: false, reason: "\uD3B8\uC9D1 \uAC00\uB2A5\uD55C \uC694\uC18C\uAC00 \uC544\uB2D8" };
           el.focus({ preventScroll: true });
-          return { focused: document.activeElement === el };`;
+          const rect = el.getBoundingClientRect();
+          return { focused: document.activeElement === el, point: { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) } };`;
 }
 function domFillBody(selector, text) {
   return `
