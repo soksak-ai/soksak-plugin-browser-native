@@ -3,7 +3,7 @@
 //   - 코어 evalInBrowser 래퍼(async IIFE + JSON.stringify)를 evalJson 으로 재현(app.webview.eval
 //     은 raw 패스스루라 호출측이 직접 감싸야 한다 — browser_eval 은 문자열 반환을 요구).
 //   - dom.* JS 스니펫·param 이름·반환 형태를 코어와 동일하게 유지(AI/E2E 행동 무변).
-import { normalizeUrl , domTextBody, domHtmlBody, domQueryBody, domClickBody, domFillBody, domSubmitBody, domWaitForBody } from "soksak-kit-browser-common";
+import { normalizeUrl , domTextBody, domHtmlBody, domQueryBody, domClickBody, domFillBody, domSubmitBody, domWaitForBody, focusEditableBody } from "soksak-kit-browser-common";
 import type { PluginContext, WebviewApi } from "./host";
 
 // 새 브라우저 탭을 열 때 mount 가 homeUrl 대신 소비할 "대기 URL".
@@ -396,6 +396,33 @@ export function registerCommands(ctx: PluginContext): void {
             data: { detail: evalErr(e), viewId: entry.viewId },
           };
         }
+      },
+    }),
+  );
+
+  sub(
+    app.commands.register("input.type", {
+      description:
+        "Focus an editable page element, then commit text through the browser engine input path (does not assign DOM value).",
+      triggers: { ko: "브라우저 실제 입력 한글 입력 IME 타이핑" },
+      params: {
+        selector: { type: "string", description: "Editable element selector", required: true },
+        text: { type: "string", description: "Committed text", required: true },
+        ...targetParam,
+      },
+      returns: "{ ok, typed, viewId? }",
+      message: (d) => `브라우저 입력 ${String(d.typed ?? "").length}자를 전달했습니다.`,
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
+        const focused = await evalJson(app.webview, entry.label, focusEditableBody(String(p.selector ?? ""))) as
+          { focused?: boolean; reason?: string };
+        if (focused?.focused !== true) {
+          return { ok: false, code: "NOT_EDITABLE", message: focused?.reason ?? "입력 요소가 포커스되지 않았습니다." };
+        }
+        const text = String(p.text ?? "");
+        await app.webview.typeText(entry.label, text);
+        return { ok: true, typed: text, viewId: entry.viewId };
       },
     }),
   );

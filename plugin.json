@@ -197,6 +197,14 @@
         "danger": "inject"
       },
       {
+        "name": "input.type",
+        "title": {
+          "ko": "브라우저 실제 텍스트 입력",
+          "en": "Type text through browser input"
+        },
+        "danger": "inject"
+      },
+      {
         "name": "dom.text",
         "title": {
           "ko": "DOM 텍스트 읽기",

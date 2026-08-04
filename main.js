@@ -12891,6 +12891,15 @@ function domQueryBody(selector, limit = 20) {
 function domClickBody(selector) {
   return `const el = document.querySelector(${jsStr(selector)}); if (!el) return { clicked: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" }; el.click(); return { clicked: true };`;
 }
+function focusEditableBody(selector) {
+  return `
+          const el = document.querySelector(${jsStr(selector)});
+          if (!el) return { focused: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
+          const editable = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable;
+          if (!editable) return { focused: false, reason: "\uD3B8\uC9D1 \uAC00\uB2A5\uD55C \uC694\uC18C\uAC00 \uC544\uB2D8" };
+          el.focus({ preventScroll: true });
+          return { focused: document.activeElement === el };`;
+}
 function domFillBody(selector, text) {
   return `
           const el = document.querySelector(${jsStr(selector)});
@@ -13255,6 +13264,30 @@ function registerCommands(ctx) {
             data: { detail: evalErr(e), viewId: entry.viewId }
           };
         }
+      }
+    })
+  );
+  sub(
+    app.commands.register("input.type", {
+      description: "Focus an editable page element, then commit text through the browser engine input path (does not assign DOM value).",
+      triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC2E4\uC81C \uC785\uB825 \uD55C\uAE00 \uC785\uB825 IME \uD0C0\uC774\uD551" },
+      params: {
+        selector: { type: "string", description: "Editable element selector", required: true },
+        text: { type: "string", description: "Committed text", required: true },
+        ...targetParam
+      },
+      returns: "{ ok, typed, viewId? }",
+      message: (d) => `\uBE0C\uB77C\uC6B0\uC800 \uC785\uB825 ${String(d.typed ?? "").length}\uC790\uB97C \uC804\uB2EC\uD588\uC2B5\uB2C8\uB2E4.`,
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
+        const focused = await evalJson(app.webview, entry.label, focusEditableBody(String(p.selector ?? "")));
+        if (focused?.focused !== true) {
+          return { ok: false, code: "NOT_EDITABLE", message: focused?.reason ?? "\uC785\uB825 \uC694\uC18C\uAC00 \uD3EC\uCEE4\uC2A4\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4." };
+        }
+        const text = String(p.text ?? "");
+        await app.webview.typeText(entry.label, text);
+        return { ok: true, typed: text, viewId: entry.viewId };
       }
     })
   );

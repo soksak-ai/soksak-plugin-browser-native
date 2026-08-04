@@ -97,6 +97,8 @@ export interface WebviewApi {
   ) => Disposable;
   /** 실제 엔진 입력 경로. supportsInputInjection=false면 호스트가 명시적으로 거절한다. */
   sendInput: (label: string, x: number, y: number) => Promise<void>;
+  /** 현재 포커스된 편집 요소에 확정 텍스트를 엔진 입력 경로로 전달한다. */
+  typeText: (label: string, text: string) => Promise<void>;
   /** webview 이벤트 구독: "nav"({url})·"title"({title})·"status"·"open-external"({url})·
    *  "loading"({loading,canBack,canForward} — 스피너/정지 토글·뒤로/앞으로 활성). 반환=해지. */
   on: (
