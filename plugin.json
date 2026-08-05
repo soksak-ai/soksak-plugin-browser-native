@@ -205,6 +205,14 @@
         "danger": "inject"
       },
       {
+        "name": "input.scroll",
+        "title": {
+          "ko": "브라우저 실제 스크롤 입력",
+          "en": "Scroll through browser input"
+        },
+        "danger": "inject"
+      },
+      {
         "name": "dom.text",
         "title": {
           "ko": "DOM 텍스트 읽기",

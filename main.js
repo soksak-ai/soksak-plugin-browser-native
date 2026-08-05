@@ -12814,6 +12814,21 @@ function focusEditableBody(selector) {
           const rect = el.getBoundingClientRect();
           return { focused: document.activeElement === el, point: { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) } };`;
 }
+function scrollTargetBody(selector) {
+  if (!selector) {
+    return `return { found: true, point: { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) } };`;
+  }
+  return `
+          const el = document.querySelector(${jsStr(selector)});
+          if (!el) return { found: false, reason: "selector \uB9E4\uCE6D \uC5C6\uC74C" };
+          const rect = el.getBoundingClientRect();
+          const left = Math.max(0, rect.left);
+          const top = Math.max(0, rect.top);
+          const right = Math.min(window.innerWidth, rect.right);
+          const bottom = Math.min(window.innerHeight, rect.bottom);
+          if (right <= left || bottom <= top) return { found: false, reason: "\uC694\uC18C\uAC00 \uBDF0\uD3EC\uD2B8 \uBC16" };
+          return { found: true, point: { x: Math.round((left + right) / 2), y: Math.round((top + bottom) / 2) } };`;
+}
 function domFillBody(selector, text) {
   return `
           const el = document.querySelector(${jsStr(selector)});
@@ -13293,6 +13308,39 @@ function registerCommands(ctx) {
         const text = String(p.text ?? "");
         await app.webview.typeText(entry.label, text);
         return { ok: true, typed: text, viewId: entry.viewId };
+      }
+    })
+  );
+  sub(
+    app.commands.register("input.scroll", {
+      description: "Send a real wheel event through the browser engine input path. selector only chooses the hit-test point; it never mutates page scroll state.",
+      triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC2E4\uC81C \uC2A4\uD06C\uB864 \uD720 \uC785\uB825" },
+      params: {
+        selector: { type: "string", description: "Optional element under the wheel" },
+        dx: { type: "number", description: "DOM WheelEvent horizontal delta (+right)", required: true },
+        dy: { type: "number", description: "DOM WheelEvent vertical delta (+down)", required: true },
+        ...targetParam
+      },
+      returns: "{ ok, scrolled: { dx, dy }, viewId? }",
+      message: () => "\uBE0C\uB77C\uC6B0\uC800\uC5D0 \uD720 \uC785\uB825\uC744 \uC804\uB2EC\uD588\uC2B5\uB2C8\uB2E4.",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
+        const dx = Number(p.dx);
+        const dy = Number(p.dy);
+        if (!Number.isFinite(dx) || !Number.isFinite(dy) || dx === 0 && dy === 0) {
+          return { ok: false, code: "INVALID_PARAMS", message: "dx/dy must be finite and not both zero" };
+        }
+        const target = await evalJson(
+          app.webview,
+          entry.label,
+          scrollTargetBody(typeof p.selector === "string" ? p.selector : void 0)
+        );
+        if (target?.found !== true || !Number.isFinite(target.point?.x) || !Number.isFinite(target.point?.y)) {
+          return { ok: false, code: "NO_TARGET", message: target?.reason ?? "scroll target not found" };
+        }
+        await app.webview.wheel(entry.label, target.point.x, target.point.y, dx, dy);
+        return { ok: true, scrolled: { dx, dy }, viewId: entry.viewId };
       }
     })
   );

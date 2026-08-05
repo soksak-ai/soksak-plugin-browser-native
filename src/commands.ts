@@ -3,7 +3,7 @@
 //   - 코어 evalInBrowser 래퍼(async IIFE + JSON.stringify)를 evalJson 으로 재현(app.webview.eval
 //     은 raw 패스스루라 호출측이 직접 감싸야 한다 — browser_eval 은 문자열 반환을 요구).
 //   - dom.* JS 스니펫·param 이름·반환 형태를 코어와 동일하게 유지(AI/E2E 행동 무변).
-import { normalizeUrl , domTextBody, domHtmlBody, domQueryBody, domClickBody, domFillBody, domSubmitBody, focusEditableBody, waitForSelectorAcrossNavigations } from "soksak-kit-browser-common";
+import { normalizeUrl , domTextBody, domHtmlBody, domQueryBody, domClickBody, domFillBody, domSubmitBody, focusEditableBody, scrollTargetBody, waitForSelectorAcrossNavigations } from "soksak-kit-browser-common";
 import type { PluginContext, WebviewApi } from "./host";
 
 // 새 브라우저 탭을 열 때 mount 가 homeUrl 대신 소비할 "대기 URL".
@@ -394,6 +394,41 @@ export function registerCommands(ctx: PluginContext): void {
         const text = String(p.text ?? "");
         await app.webview.typeText(entry.label, text);
         return { ok: true, typed: text, viewId: entry.viewId };
+      },
+    }),
+  );
+
+  sub(
+    app.commands.register("input.scroll", {
+      description:
+        "Send a real wheel event through the browser engine input path. selector only chooses the hit-test point; it never mutates page scroll state.",
+      triggers: { ko: "브라우저 실제 스크롤 휠 입력" },
+      params: {
+        selector: { type: "string", description: "Optional element under the wheel" },
+        dx: { type: "number", description: "DOM WheelEvent horizontal delta (+right)", required: true },
+        dy: { type: "number", description: "DOM WheelEvent vertical delta (+down)", required: true },
+        ...targetParam,
+      },
+      returns: "{ ok, scrolled: { dx, dy }, viewId? }",
+      message: () => "브라우저에 휠 입력을 전달했습니다.",
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
+        const dx = Number(p.dx);
+        const dy = Number(p.dy);
+        if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) {
+          return { ok: false, code: "INVALID_PARAMS", message: "dx/dy must be finite and not both zero" };
+        }
+        const target = await evalJson(
+          app.webview,
+          entry.label,
+          scrollTargetBody(typeof p.selector === "string" ? p.selector : undefined),
+        ) as { found?: boolean; reason?: string; point?: { x?: number; y?: number } };
+        if (target?.found !== true || !Number.isFinite(target.point?.x) || !Number.isFinite(target.point?.y)) {
+          return { ok: false, code: "NO_TARGET", message: target?.reason ?? "scroll target not found" };
+        }
+        await app.webview.wheel(entry.label, target.point!.x!, target.point!.y!, dx, dy);
+        return { ok: true, scrolled: { dx, dy }, viewId: entry.viewId };
       },
     }),
   );

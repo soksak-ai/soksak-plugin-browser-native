@@ -97,6 +97,8 @@ export interface WebviewApi {
   ) => Disposable;
   /** 실제 엔진 입력 경로. supportsInputInjection=false면 호스트가 명시적으로 거절한다. */
   sendInput: (label: string, x: number, y: number) => Promise<void>;
+  /** 실제 엔진 휠 입력. 좌표는 뷰 CSS px, 델타 부호는 DOM WheelEvent와 같다. */
+  wheel: (label: string, x: number, y: number, dx: number, dy: number) => Promise<void>;
   /** 현재 포커스된 편집 요소에 확정 텍스트를 엔진 입력 경로로 전달한다. */
   typeText: (label: string, text: string) => Promise<void>;
   /** webview 이벤트 구독: "nav"({url})·"title"({title})·"status"·"open-external"({url})·
