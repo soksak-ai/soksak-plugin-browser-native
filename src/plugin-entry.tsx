@@ -39,23 +39,44 @@ export default {
     injectStyles();
     // 뷰별 페이지 줌 배율(관찰 확대 — 메모리 수명).
     const pageZoom = new Map<string, number>();
+    // connect가 먼저 소비한 시작 URL을 같은 인스턴스의 DOM mount가 재사용한다.
+    const connectedInitialUrls = new Map<string, string>();
+    const initialUrl = (vctx: PluginViewContext): string => {
+      const pending = takePendingUrl();
+      const rs = vctx.restore?.state as { url?: string } | null | undefined;
+      return pending ??
+        (typeof rs?.url === "string" && rs.url ? rs.url : null) ??
+        (app.settings.get("homeUrl") as string | undefined) ??
+        "about:blank";
+    };
 
     if (app.ui?.registerView) {
       ctx.subscriptions.push(
         app.ui.registerView("content", {
+          connect(vctx: PluginViewContext) {
+            if (!vctx.viewId || !app.webview) {
+              if (vctx.viewId)
+                vctx.setStatus?.({ code: "error", message: "browser engine adapter missing (app.webview)" });
+              return;
+            }
+            const viewId = vctx.viewId;
+            const url = initialUrl(vctx);
+            connectedInitialUrls.set(viewId, url);
+            registerViewAtMount(viewId, app.webview.label(viewId), url);
+            return () => {
+              connectedInitialUrls.delete(viewId);
+              unregisterLabel(viewId);
+            };
+          },
           mount(container: HTMLElement, vctx: PluginViewContext) {
             // 시작 URL 우선순위: 대기 URL(open 명령 / open-external 새 탭이 set) →
             // 복원 상태(B3 restore.state — 뷰 레코드 영속, 뷰와 수명 동기) → homeUrl 설정 → blank.
             // takePendingUrl 은 1회 소비(다음 mount 가 잘못 이어받지 않게).
             // 플러그인 kv(vurl:viewId) 복원은 폐기 — viewId 는 세션 넘어 재사용되어
             // 죽은 뷰의 잔재가 새 뷰에 유입된다(실측: 새 탭이 유령 URL 로 시작).
-            const pending = takePendingUrl();
-            const rs = vctx.restore?.state as { url?: string } | null | undefined;
-            const url =
-              pending ??
-              (typeof rs?.url === "string" && rs.url ? rs.url : null) ??
-              (app.settings.get("homeUrl") as string | undefined) ??
-              "about:blank";
+            const url = vctx.viewId
+              ? connectedInitialUrls.get(vctx.viewId) ?? initialUrl(vctx)
+              : initialUrl(vctx);
             // 명령 타겟 등록은 mount 의 동기 경로에서 — 코어의 mounted 신호(tab.open
             // mounted:true)는 mount 반환을 뜻하므로, 등록이 React 이펙트에만 있으면
             // mounted 직후 명령이 NO_VIEW 로 죽는 창이 생긴다(실측: 갓 부팅한 창).

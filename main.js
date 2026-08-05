@@ -14158,13 +14158,32 @@ var plugin_entry_default = {
     const app = ctx.app;
     injectStyles();
     const pageZoom = /* @__PURE__ */ new Map();
+    const connectedInitialUrls = /* @__PURE__ */ new Map();
+    const initialUrl = (vctx) => {
+      const pending = takePendingUrl();
+      const rs = vctx.restore?.state;
+      return pending ?? (typeof rs?.url === "string" && rs.url ? rs.url : null) ?? app.settings.get("homeUrl") ?? "about:blank";
+    };
     if (app.ui?.registerView) {
       ctx.subscriptions.push(
         app.ui.registerView("content", {
+          connect(vctx) {
+            if (!vctx.viewId || !app.webview) {
+              if (vctx.viewId)
+                vctx.setStatus?.({ code: "error", message: "browser engine adapter missing (app.webview)" });
+              return;
+            }
+            const viewId = vctx.viewId;
+            const url = initialUrl(vctx);
+            connectedInitialUrls.set(viewId, url);
+            registerViewAtMount(viewId, app.webview.label(viewId), url);
+            return () => {
+              connectedInitialUrls.delete(viewId);
+              unregisterLabel(viewId);
+            };
+          },
           mount(container, vctx) {
-            const pending = takePendingUrl();
-            const rs = vctx.restore?.state;
-            const url = pending ?? (typeof rs?.url === "string" && rs.url ? rs.url : null) ?? app.settings.get("homeUrl") ?? "about:blank";
+            const url = vctx.viewId ? connectedInitialUrls.get(vctx.viewId) ?? initialUrl(vctx) : initialUrl(vctx);
             if (vctx.viewId && app.webview) {
               mountedViewOf.set(container, vctx.viewId);
               registerViewAtMount(vctx.viewId, app.webview.label(vctx.viewId), url);

@@ -25,6 +25,8 @@ export interface PluginViewContext {
 }
 
 export interface PluginViewProvider {
+  /** DOM과 독립인 뷰 인스턴스 명령/상태 수명을 등록한다. */
+  connect?(ctx: PluginViewContext): void | (() => void);
   mount(container: HTMLElement, ctx: PluginViewContext): void;
   unmount?(container: HTMLElement): void;
   /** 줌 인텐트(코어 PLUGIN-CONTRACT §Zoom, 선택) — 브라우저는 페이지 줌으로 응답. */
