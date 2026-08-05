@@ -12858,7 +12858,7 @@ function domWaitForBody(selector, timeoutMs = 5e3) {
               if (find()) { obs.disconnect(); clearTimeout(timer); resolve({ found: true }); }
             });
             const timer = setTimeout(() => { obs.disconnect(); resolve({ found: false }); }, ${timeoutMs});
-            obs.observe(document, { childList: true, subtree: true });
+            obs.observe(document, { attributes: true, childList: true, subtree: true });
           });`;
 }
 
@@ -13341,6 +13341,34 @@ function registerCommands(ctx) {
         }
         await app.webview.wheel(entry.label, target.point.x, target.point.y, dx, dy);
         return { ok: true, scrolled: { dx, dy }, viewId: entry.viewId };
+      }
+    })
+  );
+  sub(
+    app.commands.register("capture.full", {
+      description: "Capture the complete document of an explicit browser tab with the native engine snapshot API.",
+      triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uD0ED \uC804\uCCB4 \uD398\uC774\uC9C0 \uD480 \uC2A4\uD06C\uB864 \uCEA1\uCC98" },
+      params: {
+        path: { type: "string", description: "Absolute PNG output path", required: true },
+        ...targetParam
+      },
+      returns: "{ ok, path, bytes, width, height, viewId }",
+      message: (d) => `\uC804\uCCB4 \uD398\uC774\uC9C0\uB97C ${String(d.path ?? "")}\uC5D0 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.`,
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
+        const path = String(p.path ?? "");
+        if (!path.startsWith("/")) return { ok: false, code: "INVALID_PARAMS", message: "path must be absolute" };
+        const size = await evalJson(
+          app.webview,
+          entry.label,
+          "return { width:Math.max(innerWidth,document.documentElement.scrollWidth), height:Math.max(innerHeight,document.documentElement.scrollHeight) };"
+        );
+        const width = Number(size?.width);
+        const height = Number(size?.height);
+        if (!(width > 0 && height > 0)) return { ok: false, code: "CAPTURE_SIZE", message: "document size unavailable" };
+        const saved = await app.webview.captureFull(entry.label, path, width, height);
+        return { ok: true, ...saved, width, height, viewId: entry.viewId };
       }
     })
   );

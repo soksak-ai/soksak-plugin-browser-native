@@ -99,6 +99,7 @@ export interface WebviewApi {
   sendInput: (label: string, x: number, y: number) => Promise<void>;
   /** 실제 엔진 휠 입력. 좌표는 뷰 CSS px, 델타 부호는 DOM WheelEvent와 같다. */
   wheel: (label: string, x: number, y: number, dx: number, dy: number) => Promise<void>;
+  captureFull: (label: string, path: string, width: number, height: number) => Promise<{ path: string; bytes: number }>;
   /** 현재 포커스된 편집 요소에 확정 텍스트를 엔진 입력 경로로 전달한다. */
   typeText: (label: string, text: string) => Promise<void>;
   /** webview 이벤트 구독: "nav"({url})·"title"({title})·"status"·"open-external"({url})·

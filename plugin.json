@@ -213,6 +213,13 @@
         "danger": "inject"
       },
       {
+        "name": "capture.full",
+        "title": {
+          "ko": "브라우저 전체 페이지 캡처",
+          "en": "Capture Full Page"
+        }
+      },
+      {
         "name": "dom.text",
         "title": {
           "ko": "DOM 텍스트 읽기",

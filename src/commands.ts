@@ -433,6 +433,32 @@ export function registerCommands(ctx: PluginContext): void {
     }),
   );
 
+  sub(
+    app.commands.register("capture.full", {
+      description: "Capture the complete document of an explicit browser tab with the native engine snapshot API.",
+      triggers: { ko: "브라우저 탭 전체 페이지 풀 스크롤 캡처" },
+      params: {
+        path: { type: "string", description: "Absolute PNG output path", required: true },
+        ...targetParam,
+      },
+      returns: "{ ok, path, bytes, width, height, viewId }",
+      message: (d) => `전체 페이지를 ${String(d.path ?? "")}에 저장했습니다.`,
+      handler: async (p) => {
+        const entry = resolveEntry(explicitTarget(p));
+        if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
+        const path = String(p.path ?? "");
+        if (!path.startsWith("/")) return { ok: false, code: "INVALID_PARAMS", message: "path must be absolute" };
+        const size = await evalJson(app.webview, entry.label,
+          "return { width:Math.max(innerWidth,document.documentElement.scrollWidth), height:Math.max(innerHeight,document.documentElement.scrollHeight) };") as { width?: number; height?: number };
+        const width = Number(size?.width);
+        const height = Number(size?.height);
+        if (!(width > 0 && height > 0)) return { ok: false, code: "CAPTURE_SIZE", message: "document size unavailable" };
+        const saved = await app.webview.captureFull(entry.label, path, width, height);
+        return { ok: true, ...saved, width, height, viewId: entry.viewId };
+      },
+    }),
+  );
+
   // ── dom.text: 페이지/선택자 가시 텍스트 ──────────────────────────────────────
   sub(
     app.commands.register("dom.text", {
