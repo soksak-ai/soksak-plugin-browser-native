@@ -14114,10 +14114,15 @@ var GLOBAL_CSS = `
   position: relative;
 }
 `;
+function cspStyleNonce(doc = document) {
+  return doc.querySelector("style[nonce]")?.nonce || void 0;
+}
 function injectStyles() {
   const STYLE_ID = "sk-browser-style";
   if (document.getElementById(STYLE_ID)) return;
   const s = document.createElement("style");
+  const nonce = cspStyleNonce();
+  if (nonce) s.nonce = nonce;
   s.id = STYLE_ID;
   s.textContent = GLOBAL_CSS;
   document.head.appendChild(s);

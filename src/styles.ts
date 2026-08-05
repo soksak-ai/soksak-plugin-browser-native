@@ -102,10 +102,17 @@ export const GLOBAL_CSS = `
 }
 `;
 
+/** Tauri가 정적 asset에 부여한 CSP nonce를 동적 plugin style도 공유한다. */
+export function cspStyleNonce(doc: Document = document): string | undefined {
+  return doc.querySelector<HTMLStyleElement>("style[nonce]")?.nonce || undefined;
+}
+
 export function injectStyles(): void {
   const STYLE_ID = "sk-browser-style";
   if (document.getElementById(STYLE_ID)) return;
   const s = document.createElement("style");
+  const nonce = cspStyleNonce();
+  if (nonce) s.nonce = nonce;
   s.id = STYLE_ID;
   s.textContent = GLOBAL_CSS;
   document.head.appendChild(s);
