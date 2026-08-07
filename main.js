@@ -13019,6 +13019,17 @@ function t(key, lang) {
   return dict[key] ?? EN[key] ?? key;
 }
 
+// src/realm.ts
+function declaredRealm(app) {
+  const realm = app.realm;
+  if (!realm) return null;
+  return realm.id === "window" || realm.id === "view-renderer" ? realm : null;
+}
+function ownsWindowRegistry(app) {
+  const realm = declaredRealm(app);
+  return realm !== null && realm.id === "window" && realm.supports("commands.register");
+}
+
 // src/commands.ts
 var pendingOpenUrl = null;
 function setPendingUrl(url) {
@@ -13032,21 +13043,21 @@ function takePendingUrl() {
 var activeViews = /* @__PURE__ */ new Map();
 var lastMountedViewId = null;
 var activeViewId = null;
-function registerLabel(viewId, label, getUrl) {
-  activeViews.set(viewId, { viewId, label, getUrl });
+var liveUrls = /* @__PURE__ */ new Map();
+function connectCommandTarget(viewId, label, initialUrl) {
+  liveUrls.set(viewId, initialUrl);
+  activeViews.set(viewId, { viewId, label, getUrl: () => liveUrls.get(viewId) ?? initialUrl });
   lastMountedViewId = viewId;
   activeViewId = viewId;
+  return () => {
+    activeViews.delete(viewId);
+    liveUrls.delete(viewId);
+    if (activeViewId === viewId) activeViewId = null;
+    if (lastMountedViewId === viewId) lastMountedViewId = null;
+  };
 }
-var liveUrls = /* @__PURE__ */ new Map();
-function registerViewAtMount(viewId, label, initialUrl) {
-  liveUrls.set(viewId, initialUrl);
-  registerLabel(viewId, label, () => liveUrls.get(viewId) ?? initialUrl);
-}
-function unregisterLabel(viewId) {
-  activeViews.delete(viewId);
-  liveUrls.delete(viewId);
-  if (activeViewId === viewId) activeViewId = null;
-  if (lastMountedViewId === viewId) lastMountedViewId = null;
+function noteUrl(viewId, url) {
+  if (activeViews.has(viewId)) liveUrls.set(viewId, url);
 }
 function noteActivated(viewId) {
   if (activeViews.has(viewId)) activeViewId = viewId;
@@ -13093,7 +13104,8 @@ function waitForSelector(webview, label, selector, timeoutMs) {
 var NON_MACOS_EVAL_ERR = "eval is macOS-only (WKWebView callAsyncJavaScript)";
 function registerCommands(ctx) {
   const app = ctx.app;
-  if (!app.commands) return;
+  if (!ownsWindowRegistry(app)) return;
+  const register = (name, spec) => app.commands.register(name, spec);
   const sub = (d) => ctx.subscriptions.push(d);
   sub(
     app.events.on("view.activated", (payload) => {
@@ -13102,7 +13114,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("ping", {
+    register("ping", {
       description: "Browser plugin load/version check (E2E).",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uD551 \uC801\uC7AC\uD655\uC778 \uBC84\uC804" },
       returns: "{ ok, version }",
@@ -13111,7 +13123,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("navigate", {
+    register("navigate", {
       description: "Navigate the active browser view to a URL.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC774\uB3D9 URL \uC5F4\uAE30" },
       params: {
@@ -13133,7 +13145,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("back", {
+    register("back", {
       description: "Go back in the active browser view history.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC774\uC804 \uB4A4\uB85C" },
       params: { ...targetParam },
@@ -13148,7 +13160,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("forward", {
+    register("forward", {
       description: "Go forward in the active browser view history.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uB2E4\uC74C \uC55E\uC73C\uB85C" },
       params: { ...targetParam },
@@ -13163,7 +13175,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("reload", {
+    register("reload", {
       description: "Reload the active browser view.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC0C8\uB85C\uACE0\uCE68 \uB9AC\uB85C\uB4DC" },
       params: { ...targetParam },
@@ -13181,7 +13193,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("home", {
+    register("home", {
       description: "Navigate the active (or specified) browser view to the configured home URL.",
       triggers: { ko: "\uD648 home" },
       params: { ...targetParam },
@@ -13197,7 +13209,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("open", {
+    register("open", {
       description: "Open a new in-app browser content view (optionally at a URL). Plugin equivalent of the core browser panel.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uBDF0 \uC5F4\uAE30 \uC0C8 \uBE0C\uB77C\uC6B0\uC800 \uD0ED \uC778\uC571 \uBE0C\uB77C\uC6B0\uC800" },
       params: {
@@ -13228,7 +13240,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("devtools", {
+    register("devtools", {
       description: "Toggle the browser Web Inspector (WKWebView has no CDP \u2014 opens the OS inspector in a separate window).",
       triggers: { ko: "\uAC1C\uBC1C\uC790 \uB3C4\uAD6C \uC778\uC2A4\uD399\uD130 devtools \uC5F4\uAE30 \uB2EB\uAE30" },
       params: { ...targetParam },
@@ -13243,7 +13255,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("list", {
+    register("list", {
       description: "List live native browser webview labels (b-*). Use to detect orphaned webviews.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 webview \uBAA9\uB85D \uB77C\uBCA8 \uACE0\uC544 \uD0D0\uC9C0" },
       params: {},
@@ -13257,7 +13269,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("eval", {
+    register("eval", {
       description: "Execute arbitrary JS in a browser page (async supported; return value serialized as JSON). macOS-only.",
       triggers: { ko: "JS \uC2E4\uD589 \uC790\uBC14\uC2A4\uD06C\uB9BD\uD2B8 \uBE0C\uB77C\uC6B0\uC800 \uC2E4\uD589 \uD398\uC774\uC9C0 \uC2A4\uD06C\uB9BD\uD2B8" },
       params: {
@@ -13288,7 +13300,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("input.type", {
+    register("input.type", {
       description: "Focus an editable page element, then commit text through the browser engine input path (does not assign DOM value).",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC2E4\uC81C \uC785\uB825 \uD55C\uAE00 \uC785\uB825 IME \uD0C0\uC774\uD551" },
       params: {
@@ -13312,7 +13324,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("input.scroll", {
+    register("input.scroll", {
       description: "Send a real wheel event through the browser engine input path. selector only chooses the hit-test point; it never mutates page scroll state.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uC2E4\uC81C \uC2A4\uD06C\uB864 \uD720 \uC785\uB825" },
       params: {
@@ -13345,7 +13357,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("capture.full", {
+    register("capture.full", {
       description: "Capture the complete document of an explicit browser tab with the native engine snapshot API.",
       triggers: { ko: "\uBE0C\uB77C\uC6B0\uC800 \uD0ED \uC804\uCCB4 \uD398\uC774\uC9C0 \uD480 \uC2A4\uD06C\uB864 \uCEA1\uCC98" },
       params: {
@@ -13373,7 +13385,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("dom.text", {
+    register("dom.text", {
       description: "Get the visible text of the page or a specific selector element.",
       triggers: { ko: "DOM \uD14D\uC2A4\uD2B8 \uC77D\uAE30 \uD398\uC774\uC9C0 \uD14D\uC2A4\uD2B8 \uC120\uD0DD\uC790 \uD14D\uC2A4\uD2B8" },
       params: {
@@ -13398,7 +13410,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("dom.html", {
+    register("dom.html", {
       description: "Get the HTML of the page or a specific selector element.",
       triggers: { ko: "DOM HTML \uC77D\uAE30 \uD398\uC774\uC9C0 HTML \uC120\uD0DD\uC790 \uB9C8\uD06C\uC5C5" },
       params: {
@@ -13423,7 +13435,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("dom.query", {
+    register("dom.query", {
       description: "Summarize matching elements (tag / text / attributes) for a CSS selector \u2014 use to understand page structure.",
       triggers: { ko: "DOM \uC694\uC18C \uC870\uD68C \uC120\uD0DD\uC790 \uB9E4\uCE6D \uAD6C\uC870 \uD30C\uC545" },
       params: {
@@ -13452,7 +13464,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("dom.click", {
+    register("dom.click", {
       description: "Click the first element matching a CSS selector.",
       triggers: { ko: "DOM \uD074\uB9AD \uBC84\uD2BC \uD074\uB9AD \uB9C1\uD06C \uD074\uB9AD \uD398\uC774\uC9C0 \uD074\uB9AD" },
       params: {
@@ -13475,7 +13487,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("dom.fill", {
+    register("dom.fill", {
       description: "Fill an input element with a value (fires input/change events \u2014 React form compatible).",
       triggers: { ko: "DOM \uC785\uB825 \uCC44\uC6B0\uAE30 \uD3FC \uC785\uB825 \uD14D\uC2A4\uD2B8 \uC785\uB825 \uD544\uB4DC \uCC44\uC6B0\uAE30" },
       params: {
@@ -13507,7 +13519,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("dom.submit", {
+    register("dom.submit", {
       description: "Submit a form (selector can be the form element or any element inside it).",
       triggers: { ko: "\uD3FC \uC81C\uCD9C submit \uC804\uC1A1 \uC591\uC2DD \uC81C\uCD9C" },
       params: {
@@ -13530,7 +13542,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("dom.wait-for", {
+    register("dom.wait-for", {
       description: "Wait until a selector appears on the page (dynamic pages \u2014 uses MutationObserver).",
       triggers: { ko: "\uC694\uC18C \uB300\uAE30 \uB098\uD0C0\uB0A0 \uB54C\uAE4C\uC9C0 \uAE30\uB2E4\uB9AC\uAE30 \uB3D9\uC801 \uB85C\uB529 \uB300\uAE30" },
       params: {
@@ -13554,7 +13566,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("media.sniff", {
+    register("media.sniff", {
       description: "Harvest media URLs (m3u8/mpd/mp4/...) the active page requested \u2014 captured passively by the core init-script hook (window.__soksakMedia). Site-agnostic. macOS-only.",
       triggers: { ko: "\uBBF8\uB514\uC5B4 \uC2A4\uB2C8\uD504 \uCD94\uCD9C m3u8 \uC2A4\uD2B8\uB9BC \uD398\uC774\uC9C0 \uCEA1\uCC98 \uAC00\uB85C\uCC44\uAE30 \uB3D9\uC601\uC0C1" },
       params: {
@@ -13610,7 +13622,7 @@ function registerCommands(ctx) {
     })
   );
   sub(
-    app.commands.register("media.extract", {
+    register("media.extract", {
       description: "Extract media URLs from a page WITHOUT showing it \u2014 opens an offscreen webview, lets it load (the core hook sniffs its own media requests), then closes it. Site-agnostic. macOS-only.",
       triggers: { ko: "\uBBF8\uB514\uC5B4 \uCD94\uCD9C \uC228\uAE40 \uC624\uD504\uC2A4\uD06C\uB9B0 m3u8 \uC2A4\uD2B8\uB9BC \uD398\uC774\uC9C0 \uAC00\uB85C\uCC44\uAE30 \uB3D9\uC601\uC0C1" },
       params: {
@@ -13805,10 +13817,9 @@ function BrowserViewImpl({
       stamp(`error:${String(e).slice(0, 80)}`);
       console.error("browser_open:", e);
     });
-    registerLabel(ctx.viewId, label, () => localUrlRef.current);
+    noteUrl(ctx.viewId, localUrlRef.current);
     return () => {
       closed = true;
-      unregisterLabel(ctx.viewId);
       void webview.close(label).catch(() => {
       });
     };
@@ -13818,6 +13829,7 @@ function BrowserViewImpl({
     const d1 = webview.on(label, "nav", (p) => {
       const url = p.url;
       setLocalUrl(url);
+      if (ctx.viewId) noteUrl(ctx.viewId, url);
       if (p.inPage) return;
       if (url) {
         let t2 = url;
@@ -14131,7 +14143,6 @@ function injectStyles() {
 // src/plugin-entry.tsx
 var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
 var roots = /* @__PURE__ */ new WeakMap();
-var mountedViewOf = /* @__PURE__ */ new WeakMap();
 function mountInto(container, node) {
   injectStyles();
   unmountContainer(container);
@@ -14167,6 +14178,8 @@ var plugin_entry_default = {
     if (app.ui?.registerView) {
       ctx.subscriptions.push(
         app.ui.registerView("content", {
+          // 이 뷰가 명령 대상이라는 사실이 사는 유일한 자리 — 코어가 선언한 인스턴스 수명 seam.
+          // 프레임워크가 자식 renderer 에서 DOM 을 그려도 이 자리는 창 realm 에서 돈다.
           connect(vctx) {
             if (!vctx.viewId || !app.webview) {
               if (vctx.viewId)
@@ -14176,18 +14189,15 @@ var plugin_entry_default = {
             const viewId = vctx.viewId;
             const url = initialUrl(vctx);
             connectedInitialUrls.set(viewId, url);
-            registerViewAtMount(viewId, app.webview.label(viewId), url);
+            const disconnect = connectCommandTarget(viewId, app.webview.label(viewId), url);
             return () => {
               connectedInitialUrls.delete(viewId);
-              unregisterLabel(viewId);
+              disconnect();
             };
           },
           mount(container, vctx) {
             const url = vctx.viewId ? connectedInitialUrls.get(vctx.viewId) ?? initialUrl(vctx) : initialUrl(vctx);
-            if (vctx.viewId && app.webview) {
-              mountedViewOf.set(container, vctx.viewId);
-              registerViewAtMount(vctx.viewId, app.webview.label(vctx.viewId), url);
-            } else if (vctx.viewId) {
+            if (vctx.viewId && !app.webview) {
               vctx.setStatus?.({ code: "error", message: "browser engine adapter missing (app.webview)" });
             }
             mountInto(
@@ -14196,11 +14206,6 @@ var plugin_entry_default = {
             );
           },
           unmount(container) {
-            const vid = mountedViewOf.get(container);
-            if (vid) {
-              mountedViewOf.delete(container);
-              unregisterLabel(vid);
-            }
             unmountContainer(container);
           },
           zoom(_container, vctx, action) {
