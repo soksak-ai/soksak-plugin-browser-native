@@ -32,35 +32,40 @@ let lastMountedViewId: string | null = null;
 // "마지막으로 본 브라우저"를 친다). 그 뷰가 닫히면 unregisterLabel 이 비운다.
 let activeViewId: string | null = null;
 
-export function registerLabel(viewId: string, label: string, getUrl: () => string): void {
-  activeViews.set(viewId, { viewId, label, getUrl });
-  lastMountedViewId = viewId;
-  // 새로 마운트된 브라우저가 곧 활성이 될 가능성이 높다(view.open 직후 자기 자신이 활성).
-  // view.activated 가 곧 확정하지만, 그 전에 즉시 명령이 와도 새 뷰를 친다.
-  activeViewId = viewId;
-}
-
-// 최신 URL 미러 — mount 동기 등록의 getUrl 이 읽는다. BrowserView 가 이후 자기 클로저로
-// 재등록하며 이양하므로, 이 미러는 mount 직후 짧은 창의 사실만 책임진다.
+// 최신 URL 미러 — 등록된 뷰의 getUrl 이 읽는다. 뷰 컴포넌트는 nav 사실이 올 때마다 noteUrl 로
+// 이 미러만 갱신한다(재등록하지 않는다 — URL 은 대상 수명이 아니라 대상의 내용이다).
 const liveUrls = new Map<string, string>();
 
 /**
- * mount() 의 동기 경로에서 부른다 — React 이펙트가 아니라.
+ * 이 뷰가 명령 대상이라는 사실을 등록한다 — provider.connect 한 곳에서만 부른다.
  *
- * 실측(2026-07-26): tab.open 이 마운트를 기다려 답했는데도 그 tabId 로 보낸 navigate 가
- * NO_VIEW 였다(갓 부팅한 창). 코어의 mounted 신호는 provider.mount 반환이고, 등록이
- * React 이펙트(페인트 후)에만 있으면 mounted:true 직후 명령이 미등록 창에 떨어진다.
- * chromium 엔진의 registerViewAtMount 와 같은 계약이다.
+ * connect 는 코어가 선언한 뷰 인스턴스 수명 seam 이고(창 realm 에서 돈다), DOM 노드와 무관한
+ * 소유권이 사는 자리다. 같은 사실을 mount·unmount·뷰 컴포넌트가 각자 또 등록하면 자리가
+ * 넷이 되고, 프레임워크가 자식 renderer 에서 DOM 을 그리는 순간 그 셋은 창의 등록부에 닿지도
+ * 못한다. 반환값이 해제다 — 등록한 자리가 해제도 소유한다.
  */
-export function registerViewAtMount(viewId: string, label: string, initialUrl: string): void {
+export function connectCommandTarget(
+  viewId: string,
+  label: string,
+  initialUrl: string,
+): () => void {
   liveUrls.set(viewId, initialUrl);
-  registerLabel(viewId, label, () => liveUrls.get(viewId) ?? initialUrl);
+  activeViews.set(viewId, { viewId, label, getUrl: () => liveUrls.get(viewId) ?? initialUrl });
+  lastMountedViewId = viewId;
+  // 새로 연 브라우저가 곧 활성이 될 가능성이 높다(view.open 직후 자기 자신이 활성).
+  // view.activated 가 곧 확정하지만, 그 전에 즉시 명령이 와도 새 뷰를 친다.
+  activeViewId = viewId;
+  return () => {
+    activeViews.delete(viewId);
+    liveUrls.delete(viewId);
+    if (activeViewId === viewId) activeViewId = null;
+    if (lastMountedViewId === viewId) lastMountedViewId = null;
+  };
 }
-export function unregisterLabel(viewId: string): void {
-  activeViews.delete(viewId);
-  liveUrls.delete(viewId);
-  if (activeViewId === viewId) activeViewId = null;
-  if (lastMountedViewId === viewId) lastMountedViewId = null;
+
+/** 이 뷰가 지금 보고 있는 URL. 대상 수명과 무관한 내용 사실이므로 재등록하지 않는다. */
+export function noteUrl(viewId: string, url: string): void {
+  if (activeViews.has(viewId)) liveUrls.set(viewId, url);
 }
 
 // 호스트 view.activated 이벤트가 알리는 활성 뷰 id 를 반영. 등록된 브라우저 뷰일 때만 갱신한다

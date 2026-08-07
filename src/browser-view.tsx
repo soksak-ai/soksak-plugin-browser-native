@@ -9,8 +9,7 @@ import type { PluginApi, PluginViewContext } from "./host";
 import { loadStatus } from "./view-status";
 import { t } from "./i18n";
 import {
-  registerLabel,
-  unregisterLabel,
+  noteUrl,
   setPendingUrl,
   takePendingUrl,
 } from "./commands";
@@ -169,13 +168,12 @@ function BrowserViewImpl({
         console.error("browser_open:", e);
       });
 
-    // 명령 레지스트리에 label 등록(navigator 명령 라우팅용).
-    // getUrl 클로저는 컴포넌트 state 의 최신 localUrl 을 반환한다.
-    registerLabel(ctx.viewId!, label, () => localUrlRef.current);
+    // 명령 대상 등록은 여기 없다 — provider.connect 가 소유한다. 이 컴포넌트가 아는 것은
+    // "지금 보고 있는 URL"이라는 내용 사실뿐이고, 그것만 미러에 적는다.
+    noteUrl(ctx.viewId!, localUrlRef.current);
 
     return () => {
       closed = true;
-      unregisterLabel(ctx.viewId!);
       void webview.close(label).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -187,6 +185,8 @@ function BrowserViewImpl({
     const d1 = webview.on(label, "nav", (p) => {
       const url = p.url as string;
       setLocalUrl(url);
+      // 명령이 읽는 미러도 같은 사실로 갱신한다(재등록 없이 — 내용은 수명이 아니다).
+      if (ctx.viewId) noteUrl(ctx.viewId, url);
       // title 폴백 — 탭 제목은 콘텐츠 사실이다: 페이지가 title 이벤트를 안 내는 경우
       // (about:blank·일부 data URL)에도 이전 페이지의 stale 제목이 남지 않게, nav 시점에
       // URL(host 우선)로 먼저 보고한다. 진짜 title 이벤트가 오면 그것이 덮는다.

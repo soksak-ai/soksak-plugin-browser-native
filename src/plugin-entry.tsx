@@ -3,12 +3,10 @@
 import { createRoot, type Root } from "react-dom/client";
 import { BrowserView } from "./browser-view";
 import { injectStyles } from "./styles";
-import { registerCommands, registerViewAtMount, takePendingUrl, unregisterLabel } from "./commands";
+import { connectCommandTarget, registerCommands, takePendingUrl } from "./commands";
 import type { PluginContext, PluginViewContext } from "./host";
 
 const roots = new WeakMap<HTMLElement, Root>();
-// unmount 는 컨텍스트를 받지 않으므로 어떤 컨테이너가 어떤 뷰였는지 mount 가 적어 둔다.
-const mountedViewOf = new WeakMap<HTMLElement, string>();
 
 function mountInto(container: HTMLElement, node: React.ReactElement): void {
   injectStyles();
@@ -53,6 +51,8 @@ export default {
     if (app.ui?.registerView) {
       ctx.subscriptions.push(
         app.ui.registerView("content", {
+          // 이 뷰가 명령 대상이라는 사실이 사는 유일한 자리 — 코어가 선언한 인스턴스 수명 seam.
+          // 프레임워크가 자식 renderer 에서 DOM 을 그려도 이 자리는 창 realm 에서 돈다.
           connect(vctx: PluginViewContext) {
             if (!vctx.viewId || !app.webview) {
               if (vctx.viewId)
@@ -62,10 +62,10 @@ export default {
             const viewId = vctx.viewId;
             const url = initialUrl(vctx);
             connectedInitialUrls.set(viewId, url);
-            registerViewAtMount(viewId, app.webview.label(viewId), url);
+            const disconnect = connectCommandTarget(viewId, app.webview.label(viewId), url);
             return () => {
               connectedInitialUrls.delete(viewId);
-              unregisterLabel(viewId);
+              disconnect();
             };
           },
           mount(container: HTMLElement, vctx: PluginViewContext) {
@@ -77,13 +77,10 @@ export default {
             const url = vctx.viewId
               ? connectedInitialUrls.get(vctx.viewId) ?? initialUrl(vctx)
               : initialUrl(vctx);
-            // 명령 타겟 등록은 mount 의 동기 경로에서 — 코어의 mounted 신호(tab.open
-            // mounted:true)는 mount 반환을 뜻하므로, 등록이 React 이펙트에만 있으면
-            // mounted 직후 명령이 NO_VIEW 로 죽는 창이 생긴다(실측: 갓 부팅한 창).
-            if (vctx.viewId && app.webview) {
-              mountedViewOf.set(container, vctx.viewId);
-              registerViewAtMount(vctx.viewId, app.webview.label(vctx.viewId), url);
-            } else if (vctx.viewId) {
+            // 명령 대상 등록은 여기 없다 — connect 가 이미 했고, connect 는 mount 보다 먼저
+            // 같은 턴에 돈다. 여기서 또 등록하면 같은 사실이 두 자리에 살고, 자식 renderer 에서
+            // 그리는 프레임워크에서는 이 자리가 창의 등록부에 닿지도 못한다.
+            if (vctx.viewId && !app.webview) {
               // 침묵 실패 금지 — 어댑터 부재는 status 축으로도 보고한다(화면 카드와 별개 채널).
               vctx.setStatus?.({ code: "error", message: "browser engine adapter missing (app.webview)" });
             }
@@ -93,12 +90,7 @@ export default {
             );
           },
           unmount(container: HTMLElement) {
-            // 등록을 mount 가 했으니 해제도 여기서 한다(React cleanup 미실행 케이스 방어 — 멱등).
-            const vid = mountedViewOf.get(container);
-            if (vid) {
-              mountedViewOf.delete(container);
-              unregisterLabel(vid);
-            }
+            // 등록을 connect 가 했으니 해제도 connect 의 반환이 한다 — 여기는 DOM 만 거둔다.
             unmountContainer(container);
           },
           zoom(_container: HTMLElement, vctx: PluginViewContext, action: "in" | "out" | "reset") {

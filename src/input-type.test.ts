@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { registerCommands, registerViewAtMount, unregisterLabel } from "./commands";
+import { connectCommandTarget, registerCommands } from "./commands";
 import { declareRealm } from "./realm-fixture";
 
 describe("input.type 공개 계약", () => {
-  afterEach(() => unregisterLabel("v-ime"));
+  let disconnect = () => {};
+  afterEach(() => disconnect());
 
   it("DOM 값을 쓰지 않고 포커스 확인 뒤 엔진 텍스트 입력을 호출한다", async () => {
     const handlers = new Map<string, (params: Record<string, unknown>) => Promise<object> | object>();
@@ -14,7 +15,7 @@ describe("input.type 공개 계약", () => {
     });
     const typeText = vi.fn(async () => undefined);
     const subscriptions: { dispose(): void }[] = [];
-    registerViewAtMount("v-ime", "b-w-v-ime", "about:blank");
+    disconnect = connectCommandTarget("v-ime", "b-w-v-ime", "about:blank");
 
     const app = declareRealm("window", {
       commands: {
@@ -40,7 +41,8 @@ describe("input.type 공개 계약", () => {
 });
 
 describe("input.scroll 공개 계약", () => {
-  afterEach(() => unregisterLabel("v-scroll"));
+  let disconnect = () => {};
+  afterEach(() => disconnect());
 
   it("페이지를 직접 바꾸지 않고 측정한 좌표로 엔진 휠 입력을 보낸다", async () => {
     const handlers = new Map<string, (params: Record<string, unknown>) => Promise<object> | object>();
@@ -50,7 +52,7 @@ describe("input.scroll 공개 계약", () => {
       return JSON.stringify({ found: true, point: { x: 31, y: 47 } });
     });
     const wheel = vi.fn(async () => undefined);
-    registerViewAtMount("v-scroll", "b-w-v-scroll", "about:blank");
+    disconnect = connectCommandTarget("v-scroll", "b-w-v-scroll", "about:blank");
 
     const app = declareRealm("window", {
       commands: {
