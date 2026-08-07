@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerCommands, registerViewAtMount, unregisterLabel } from "./commands";
+import { declareRealm } from "./realm-fixture";
 
 describe("input.type 공개 계약", () => {
   afterEach(() => unregisterLabel("v-ime"));
@@ -15,20 +16,18 @@ describe("input.type 공개 계약", () => {
     const subscriptions: { dispose(): void }[] = [];
     registerViewAtMount("v-ime", "b-w-v-ime", "about:blank");
 
-    registerCommands({
-      app: {
-        commands: {
-          register: (name: string, spec: { handler: (p: Record<string, unknown>) => Promise<object> | object }) => {
-            handlers.set(name, spec.handler);
-            return { dispose() {} };
-          },
-          execute: vi.fn(),
+    const app = declareRealm("window", {
+      commands: {
+        register: (name: string, spec: { handler: (p: Record<string, unknown>) => Promise<object> | object }) => {
+          handlers.set(name, spec.handler);
+          return { dispose() {} };
         },
-        events: { on: () => ({ dispose() {} }) },
-        webview: { eval: evalPage, typeText },
+        execute: vi.fn(),
       },
-      subscriptions,
-    } as never);
+      events: { on: () => ({ dispose() {} }) },
+      webview: { eval: evalPage, typeText },
+    });
+    registerCommands({ app, subscriptions } as never);
 
     const outcome = await handlers.get("input.type")!({
       viewId: "v-ime",
@@ -53,20 +52,18 @@ describe("input.scroll 공개 계약", () => {
     const wheel = vi.fn(async () => undefined);
     registerViewAtMount("v-scroll", "b-w-v-scroll", "about:blank");
 
-    registerCommands({
-      app: {
-        commands: {
-          register: (name: string, spec: { handler: (p: Record<string, unknown>) => Promise<object> | object }) => {
-            handlers.set(name, spec.handler);
-            return { dispose() {} };
-          },
-          execute: vi.fn(),
+    const app = declareRealm("window", {
+      commands: {
+        register: (name: string, spec: { handler: (p: Record<string, unknown>) => Promise<object> | object }) => {
+          handlers.set(name, spec.handler);
+          return { dispose() {} };
         },
-        events: { on: () => ({ dispose() {} }) },
-        webview: { eval: evalPage, wheel },
+        execute: vi.fn(),
       },
-      subscriptions: [],
-    } as never);
+      events: { on: () => ({ dispose() {} }) },
+      webview: { eval: evalPage, wheel },
+    });
+    registerCommands({ app, subscriptions: [] } as never);
 
     expect(handlers.has("input.scroll")).toBe(true);
     const outcome = await handlers.get("input.scroll")!({

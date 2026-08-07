@@ -4,7 +4,8 @@
 //     은 raw 패스스루라 호출측이 직접 감싸야 한다 — browser_eval 은 문자열 반환을 요구).
 //   - dom.* JS 스니펫·param 이름·반환 형태를 코어와 동일하게 유지(AI/E2E 행동 무변).
 import { normalizeUrl , domTextBody, domHtmlBody, domQueryBody, domClickBody, domFillBody, domSubmitBody, focusEditableBody, scrollTargetBody, waitForSelectorAcrossNavigations } from "soksak-kit-browser-common";
-import type { PluginContext, WebviewApi } from "./host";
+import type { Disposable, PluginCommandSpec, PluginContext, WebviewApi } from "./host";
+import { ownsWindowRegistry } from "./realm";
 
 // 새 브라우저 탭을 열 때 mount 가 homeUrl 대신 소비할 "대기 URL".
 // open 명령 / open-external(새 탭) 이 set, BrowserView mount 가 takePendingUrl 로 소비(1회).
@@ -141,7 +142,13 @@ const NON_MACOS_EVAL_ERR = "eval is macOS-only (WKWebView callAsyncJavaScript)";
 
 export function registerCommands(ctx: PluginContext): void {
   const app = ctx.app;
-  if (!app.commands) return;
+  // 등록부는 창 realm 이 소유한다. 자식 renderer 는 commands 를 들고 있어도 register 가 없으니
+  // 표면의 존재를 소유의 증거로 읽으면 그 자리에서 죽는다 — 여기서는 registerView 가 먼저
+  // 끝난 덕에 화면만 살아남았을 뿐, 뒤따르는 등록과 구독은 전부 유실됐다.
+  if (!ownsWindowRegistry(app)) return;
+  // 소유가 확인된 뒤에만 등록자를 집는다 — 좁히는 자리는 이 한 곳이고, 아래는 그 결과만 쓴다.
+  const register = (name: string, spec: PluginCommandSpec): Disposable =>
+    app.commands!.register!(name, spec);
   const sub = (d: { dispose(): void }) => ctx.subscriptions.push(d);
 
   // 활성 뷰 추종 — 호스트가 활성 뷰를 바꿀 때마다(탭 전환·클릭) 알린다. 이 뷰가 브라우저면 타겟 갱신.
@@ -154,7 +161,7 @@ export function registerCommands(ctx: PluginContext): void {
   );
 
   sub(
-    app.commands.register("ping", {
+    register("ping", {
       description: "Browser plugin load/version check (E2E).",
       triggers: { ko: "브라우저 핑 적재확인 버전" },
       returns: "{ ok, version }",
@@ -164,7 +171,7 @@ export function registerCommands(ctx: PluginContext): void {
   );
 
   sub(
-    app.commands.register("navigate", {
+    register("navigate", {
       description: "Navigate the active browser view to a URL.",
       triggers: { ko: "브라우저 이동 URL 열기" },
       params: {
@@ -190,7 +197,7 @@ export function registerCommands(ctx: PluginContext): void {
   );
 
   sub(
-    app.commands.register("back", {
+    register("back", {
       description: "Go back in the active browser view history.",
       triggers: { ko: "브라우저 이전 뒤로" },
       params: { ...targetParam },
@@ -206,7 +213,7 @@ export function registerCommands(ctx: PluginContext): void {
   );
 
   sub(
-    app.commands.register("forward", {
+    register("forward", {
       description: "Go forward in the active browser view history.",
       triggers: { ko: "브라우저 다음 앞으로" },
       params: { ...targetParam },
@@ -222,7 +229,7 @@ export function registerCommands(ctx: PluginContext): void {
   );
 
   sub(
-    app.commands.register("reload", {
+    register("reload", {
       description: "Reload the active browser view.",
       triggers: { ko: "브라우저 새로고침 리로드" },
       params: { ...targetParam },
@@ -242,7 +249,7 @@ export function registerCommands(ctx: PluginContext): void {
   );
 
   sub(
-    app.commands.register("home", {
+    register("home", {
       description: "Navigate the active (or specified) browser view to the configured home URL.",
       triggers: { ko: "홈 home" },
       params: { ...targetParam },
@@ -262,7 +269,7 @@ export function registerCommands(ctx: PluginContext): void {
   // url 을 pendingOpenUrl 에 set → view.open{program:browser} 호출 → 새 BrowserView mount 가
   // homeUrl 대신 takePendingUrl 로 그 url 을 소비. 코어 browser.open(where=panel)의 플러그인 등가.
   sub(
-    app.commands.register("open", {
+    register("open", {
       description:
         "Open a new in-app browser content view (optionally at a URL). Plugin equivalent of the core browser panel.",
       triggers: { ko: "브라우저 뷰 열기 새 브라우저 탭 인앱 브라우저" },
@@ -302,7 +309,7 @@ export function registerCommands(ctx: PluginContext): void {
 
   // ── devtools: OS 인스펙터 토글 ───────────────────────────────────────────────
   sub(
-    app.commands.register("devtools", {
+    register("devtools", {
       description:
         "Toggle the browser Web Inspector (WKWebView has no CDP — opens the OS inspector in a separate window).",
       triggers: { ko: "개발자 도구 인스펙터 devtools 열기 닫기" },
@@ -320,7 +327,7 @@ export function registerCommands(ctx: PluginContext): void {
 
   // ── list: 살아있는 브라우저 webview label 목록(GC/정리·고아 탐지) ────────────
   sub(
-    app.commands.register("list", {
+    register("list", {
       description:
         "List live native browser webview labels (b-*). Use to detect orphaned webviews.",
       triggers: { ko: "브라우저 webview 목록 라벨 고아 탐지" },
@@ -337,7 +344,7 @@ export function registerCommands(ctx: PluginContext): void {
 
   // ── eval: 페이지에서 임의 JS 실행(AI DOM 제어 통로). macOS 한정 ──────────────
   sub(
-    app.commands.register("eval", {
+    register("eval", {
       description:
         "Execute arbitrary JS in a browser page (async supported; return value serialized as JSON). macOS-only.",
       triggers: { ko: "JS 실행 자바스크립트 브라우저 실행 페이지 스크립트" },
@@ -372,7 +379,7 @@ export function registerCommands(ctx: PluginContext): void {
   );
 
   sub(
-    app.commands.register("input.type", {
+    register("input.type", {
       description:
         "Focus an editable page element, then commit text through the browser engine input path (does not assign DOM value).",
       triggers: { ko: "브라우저 실제 입력 한글 입력 IME 타이핑" },
@@ -399,7 +406,7 @@ export function registerCommands(ctx: PluginContext): void {
   );
 
   sub(
-    app.commands.register("input.scroll", {
+    register("input.scroll", {
       description:
         "Send a real wheel event through the browser engine input path. selector only chooses the hit-test point; it never mutates page scroll state.",
       triggers: { ko: "브라우저 실제 스크롤 휠 입력" },
@@ -434,7 +441,7 @@ export function registerCommands(ctx: PluginContext): void {
   );
 
   sub(
-    app.commands.register("capture.full", {
+    register("capture.full", {
       description: "Capture the complete document of an explicit browser tab with the native engine snapshot API.",
       triggers: { ko: "브라우저 탭 전체 페이지 풀 스크롤 캡처" },
       params: {
@@ -461,7 +468,7 @@ export function registerCommands(ctx: PluginContext): void {
 
   // ── dom.text: 페이지/선택자 가시 텍스트 ──────────────────────────────────────
   sub(
-    app.commands.register("dom.text", {
+    register("dom.text", {
       description: "Get the visible text of the page or a specific selector element.",
       triggers: { ko: "DOM 텍스트 읽기 페이지 텍스트 선택자 텍스트" },
       params: {
@@ -488,7 +495,7 @@ export function registerCommands(ctx: PluginContext): void {
 
   // ── dom.html: 페이지/선택자 HTML ─────────────────────────────────────────────
   sub(
-    app.commands.register("dom.html", {
+    register("dom.html", {
       description: "Get the HTML of the page or a specific selector element.",
       triggers: { ko: "DOM HTML 읽기 페이지 HTML 선택자 마크업" },
       params: {
@@ -515,7 +522,7 @@ export function registerCommands(ctx: PluginContext): void {
 
   // ── dom.query: 선택자 매칭 요소 요약(구조 파악) ──────────────────────────────
   sub(
-    app.commands.register("dom.query", {
+    register("dom.query", {
       description:
         "Summarize matching elements (tag / text / attributes) for a CSS selector — use to understand page structure.",
       triggers: { ko: "DOM 요소 조회 선택자 매칭 구조 파악" },
@@ -550,7 +557,7 @@ export function registerCommands(ctx: PluginContext): void {
 
   // ── dom.click: 첫 매칭 요소 클릭 ─────────────────────────────────────────────
   sub(
-    app.commands.register("dom.click", {
+    register("dom.click", {
       description: "Click the first element matching a CSS selector.",
       triggers: { ko: "DOM 클릭 버튼 클릭 링크 클릭 페이지 클릭" },
       params: {
@@ -575,7 +582,7 @@ export function registerCommands(ctx: PluginContext): void {
 
   // ── dom.fill: input 값 채우기(input/change 발화 — React 호환) ─────────────────
   sub(
-    app.commands.register("dom.fill", {
+    register("dom.fill", {
       description:
         "Fill an input element with a value (fires input/change events — React form compatible).",
       triggers: { ko: "DOM 입력 채우기 폼 입력 텍스트 입력 필드 채우기" },
@@ -610,7 +617,7 @@ export function registerCommands(ctx: PluginContext): void {
 
   // ── dom.submit: 폼 제출 ──────────────────────────────────────────────────────
   sub(
-    app.commands.register("dom.submit", {
+    register("dom.submit", {
       description: "Submit a form (selector can be the form element or any element inside it).",
       triggers: { ko: "폼 제출 submit 전송 양식 제출" },
       params: {
@@ -635,7 +642,7 @@ export function registerCommands(ctx: PluginContext): void {
 
   // ── dom.wait-for: 선택자 출현 대기(MutationObserver) ─────────────────────────
   sub(
-    app.commands.register("dom.wait-for", {
+    register("dom.wait-for", {
       description: "Wait until a selector appears on the page (dynamic pages — uses MutationObserver).",
       triggers: { ko: "요소 대기 나타날 때까지 기다리기 동적 로딩 대기" },
       params: {
@@ -663,7 +670,7 @@ export function registerCommands(ctx: PluginContext): void {
   // 코어 init script(MEDIA_SNIFF)가 browser_open 시 항상 주입돼 window.__soksakMedia 에 패시브
   // 기록 → eval 로 읽기만 한다(코어 browser.media.sniff 충실 이식). 시간 상한 폴링(R10 무한폴링 금지).
   sub(
-    app.commands.register("media.sniff", {
+    register("media.sniff", {
       description:
         "Harvest media URLs (m3u8/mpd/mp4/...) the active page requested — captured passively by the core init-script hook (window.__soksakMedia). Site-agnostic. macOS-only.",
       triggers: { ko: "미디어 스니프 추출 m3u8 스트림 페이지 캡처 가로채기 동영상" },
@@ -724,7 +731,7 @@ export function registerCommands(ctx: PluginContext): void {
   // 코어 browser_media_extract 의 플러그인 이식: 화면 밖(-20000) child webview 를 열고(코어가
   // MEDIA_SNIFF 를 자동 주입) 로드시킨 뒤 window.__soksakMedia 를 폴링, 끝나면 닫는다. 사이트 무관.
   sub(
-    app.commands.register("media.extract", {
+    register("media.extract", {
       description:
         "Extract media URLs from a page WITHOUT showing it — opens an offscreen webview, lets it load (the core hook sniffs its own media requests), then closes it. Site-agnostic. macOS-only.",
       triggers: { ko: "미디어 추출 숨김 오프스크린 m3u8 스트림 페이지 가로채기 동영상" },

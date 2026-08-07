@@ -1,6 +1,7 @@
 // 코어 플러그인 API 중 browser 플러그인이 쓰는 표면만 선언.
 // soksak-plugin-spec v1 의 SoksakPluginApi 와 동형 — 별도 repo, 코어 소스 비의존.
 // 미선언 권한 표면은 런타임에 undefined.
+import type { DeclaredRealm } from "./realm";
 
 export interface Disposable {
   dispose(): void;
@@ -132,9 +133,12 @@ export interface DataApi {
 
 export interface PluginApi {
   pluginId: string;
+  /** 코어가 붙인 realm 신원 선언 — 이 표면이 무엇을 부를 수 있는지의 단일 진실. */
+  realm?: DeclaredRealm;
   locale: () => string;
   commands?: {
-    register: (name: string, spec: PluginCommandSpec) => Disposable;
+    /** 창 realm 만 제공한다. 자식 renderer 는 execute 만 소비한다. */
+    register?: (name: string, spec: PluginCommandSpec) => Disposable;
     execute: (name: string, params?: Record<string, unknown>) => Promise<CommandOutcome>;
   };
   events: {
