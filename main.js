@@ -746,7 +746,7 @@ var require_react_production = __commonJS({
     exports.useTransition = function() {
       return ReactSharedInternals.H.useTransition();
     };
-    exports.version = "19.2.8";
+    exports.version = "19.2.7";
   }
 });
 
@@ -907,7 +907,7 @@ var require_react_dom_production = __commonJS({
     exports.useFormStatus = function() {
       return ReactSharedInternals.H.useHostTransitionStatus();
     };
-    exports.version = "19.2.8";
+    exports.version = "19.2.7";
   }
 });
 
@@ -12584,12 +12584,12 @@ var require_react_dom_client_production = __commonJS({
       }
     };
     var isomorphicReactPackageVersion$jscomp$inline_1840 = React.version;
-    if ("19.2.8" !== isomorphicReactPackageVersion$jscomp$inline_1840)
+    if ("19.2.7" !== isomorphicReactPackageVersion$jscomp$inline_1840)
       throw Error(
         formatProdErrorMessage(
           527,
           isomorphicReactPackageVersion$jscomp$inline_1840,
-          "19.2.8"
+          "19.2.7"
         )
       );
     ReactDOMSharedInternals.findDOMNode = function(componentOrElement) {
@@ -12607,10 +12607,10 @@ var require_react_dom_client_production = __commonJS({
     };
     var internals$jscomp$inline_2347 = {
       bundleType: 0,
-      version: "19.2.8",
+      version: "19.2.7",
       rendererPackageName: "react-dom",
       currentDispatcherRef: ReactSharedInternals,
-      reconcilerVersion: "19.2.8"
+      reconcilerVersion: "19.2.7"
     };
     if ("undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__) {
       hook$jscomp$inline_2348 = __REACT_DEVTOOLS_GLOBAL_HOOK__;
@@ -12678,7 +12678,7 @@ var require_react_dom_client_production = __commonJS({
       listenToAllSupportedEvents(container);
       return new ReactDOMHydrationRoot(initialChildren);
     };
-    exports.version = "19.2.8";
+    exports.version = "19.2.7";
   }
 });
 
@@ -14034,8 +14034,8 @@ var GLOBAL_CSS = `
   width: 100%;
   height: 100%;
   background: transparent;
-  color: var(--fg, #ddd);
-  font: 12px var(--app-font, system-ui, sans-serif);
+  color: var(--fg);
+  font: 12px var(--app-font);
 }
 .bv-btn {
   flex: 0 0 auto;
@@ -14044,7 +14044,7 @@ var GLOBAL_CSS = `
   justify-content: center;
   border: none;
   background: transparent;
-  color: var(--fg, #ddd);
+  color: var(--fg);
   opacity: 0.7;
   cursor: pointer;
   font-size: 13px;
@@ -14075,20 +14075,20 @@ var GLOBAL_CSS = `
   background: rgba(127, 127, 127, 0.12);
   border: 1px solid transparent;
   border-radius: 11px;
-  color: var(--fg, #ddd);
+  color: var(--fg);
   font-size: 12px;
   outline: none;
 }
 .bv-url:focus {
-  border-color: var(--acc, #6cf);
+  border-color: var(--acc);
 }
 /* \uC990\uACA8\uCC3E\uAE30 \uBAA9\uB85D \u2014 flex \uD615\uC81C\uB77C \uC5F4\uB9AC\uBA74 webview \uBCF8\uBB38(.bv-area)\uC774 \uADF8\uB9CC\uD07C \uC904\uC5B4\uB4E0\uB2E4. */
 .bv-bm-list {
   flex: 0 0 auto;
   max-height: 50%;
   overflow-y: auto;
-  background: var(--bg, #1e1e1e);
-  border-bottom: 1px solid var(--bd-soft, #2a2a2a);
+  background: var(--bg);
+  border-bottom: 1px solid var(--bd-soft);
   padding: 4px;
 }
 .bv-bm-item {

@@ -9,8 +9,8 @@ export const GLOBAL_CSS = `
   width: 100%;
   height: 100%;
   background: transparent;
-  color: var(--fg, #ddd);
-  font: 12px var(--app-font, system-ui, sans-serif);
+  color: var(--fg);
+  font: 12px var(--app-font);
 }
 .bv-btn {
   flex: 0 0 auto;
@@ -19,7 +19,7 @@ export const GLOBAL_CSS = `
   justify-content: center;
   border: none;
   background: transparent;
-  color: var(--fg, #ddd);
+  color: var(--fg);
   opacity: 0.7;
   cursor: pointer;
   font-size: 13px;
@@ -50,20 +50,20 @@ export const GLOBAL_CSS = `
   background: rgba(127, 127, 127, 0.12);
   border: 1px solid transparent;
   border-radius: 11px;
-  color: var(--fg, #ddd);
+  color: var(--fg);
   font-size: 12px;
   outline: none;
 }
 .bv-url:focus {
-  border-color: var(--acc, #6cf);
+  border-color: var(--acc);
 }
 /* 즐겨찾기 목록 — flex 형제라 열리면 webview 본문(.bv-area)이 그만큼 줄어든다. */
 .bv-bm-list {
   flex: 0 0 auto;
   max-height: 50%;
   overflow-y: auto;
-  background: var(--bg, #1e1e1e);
-  border-bottom: 1px solid var(--bd-soft, #2a2a2a);
+  background: var(--bg);
+  border-bottom: 1px solid var(--bd-soft);
   padding: 4px;
 }
 .bv-bm-item {
