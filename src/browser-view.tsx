@@ -321,7 +321,7 @@ function BrowserViewImpl({
     onNavigate: (raw) => navigate(raw),
     onBack: () => { if (label && webview) void webview.history(label, -1); },
     onForward: () => { if (label && webview) void webview.history(label, 1); },
-    onReload: () => { if (label && webview) void webview.navigate(label, localUrlRef.current); },
+    onReload: () => { if (label && webview) void webview.reload(label); },
     onStop: () => { if (label && webview) void webview.stop?.(label); },
     onHome: () => navigate(String(app.settings.get("homeUrl") ?? "about:blank")),
     onBookmarkToggle: () => void toggleBookmark(),

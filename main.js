@@ -13184,10 +13184,7 @@ function registerCommands(ctx) {
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
-        const url = entry.getUrl();
-        if (url && url !== "about:blank") {
-          await app.webview.navigate(entry.label, url);
-        }
+        await app.webview.reload(entry.label);
         return { ok: true, viewId: entry.viewId };
       }
     })
@@ -13932,7 +13929,7 @@ function BrowserViewImpl({
       if (label && webview) void webview.history(label, 1);
     },
     onReload: () => {
-      if (label && webview) void webview.navigate(label, localUrlRef.current);
+      if (label && webview) void webview.reload(label);
     },
     onStop: () => {
       if (label && webview) void webview.stop?.(label);

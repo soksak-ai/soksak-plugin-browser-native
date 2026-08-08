@@ -243,11 +243,9 @@ export function registerCommands(ctx: PluginContext): void {
       handler: async (p) => {
         const entry = resolveEntry(explicitTarget(p));
         if (!entry || !app.webview) return { ok: false, code: "NO_VIEW", message: "no browser view to act on" };
-        // 코어에 standalone reload invoke 없음 → 현재 URL 재전송으로 대체.
-        const url = entry.getUrl();
-        if (url && url !== "about:blank") {
-          await app.webview.navigate(entry.label, url);
-        }
+        // 진짜 새로고침이다. 현재 URL 로 다시 이동하면 이력이 한 칸 더 쌓이고, 뒤로 갔던
+        // 자리에서 새로고침하면 앞 자리로 되돌아간다(실측 2026-08-08: len 2→3).
+        await app.webview.reload(entry.label);
         return { ok: true, viewId: entry.viewId };
       },
     }),
