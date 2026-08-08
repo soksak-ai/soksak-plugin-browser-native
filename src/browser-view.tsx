@@ -3,7 +3,9 @@
 
 import { memo, useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { createBrowserToolbar } from "soksak-kit-browser-common";
+import { createBrowserToolbar,
+  normalizeUrl,
+} from "soksak-kit-browser-common";
 import type { BrowserToolbar } from "soksak-kit-browser-common";
 import type { PluginApi, PluginViewContext } from "./host";
 import { loadStatus } from "./view-status";
@@ -14,13 +16,6 @@ import {
   takePendingUrl,
 } from "./commands";
 
-// ── URL 정규화 (코어 BrowserView.tsx 와 동일) ────────────────────────────────
-function normalizeUrl(input: string): string {
-  const s = input.trim();
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(s)) return s;
-  if (!s.includes(" ") && s.includes(".")) return `https://${s}`;
-  return `https://www.google.com/search?q=${encodeURIComponent(s)}`;
-}
 
 // ── 즐겨찾기 타입 ────────────────────────────────────────────────────────────
 interface Bookmark {

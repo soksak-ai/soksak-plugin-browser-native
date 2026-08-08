@@ -13690,12 +13690,6 @@ function evalErr(e) {
 
 // src/browser-view.tsx
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
-function normalizeUrl2(input) {
-  const s = input.trim();
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(s)) return s;
-  if (!s.includes(" ") && s.includes(".")) return `https://${s}`;
-  return `https://www.google.com/search?q=${encodeURIComponent(s)}`;
-}
 function IconMenu() {
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "3", y1: "6", x2: "21", y2: "6" }),
@@ -13907,7 +13901,7 @@ function BrowserViewImpl({
     return () => d.dispose();
   }, [label, webview, openExternal]);
   const navigate = (0, import_react.useCallback)((raw) => {
-    const u = normalizeUrl2(raw);
+    const u = normalizeUrl(raw);
     setLocalUrl(u);
     if (label && webview) {
       void webview.navigate(label, u).catch(() => {
